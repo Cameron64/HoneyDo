@@ -1,0 +1,1 @@
+Read data/recipes/history.json and return a JSON object with ONE recipe suggestion: {"suggestions": [{"date": "2025-12-01", "mealType": "dinner", "recipe": {name, cuisine, etc from the file}}], "reasoning": "why"}. Return ONLY valid JSON.

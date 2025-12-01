@@ -6,13 +6,16 @@ dist/
 build/
 .next/
 
-# Environment
+# Environment (NEVER commit real .env files)
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
+apps/**/.env
+apps/**/.env.*
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -26,9 +29,7 @@ Thumbs.db
 npm-debug.log*
 
 # Database
-*.db
-*.sqlite
-*.sqlite3
+apps/api/data/
 
 # Cache
 .cache/
@@ -36,3 +37,26 @@ npm-debug.log*
 
 # Testing
 coverage/
+
+# PWA
+dev-dist/
+
+# Drizzle
+apps/api/drizzle/
+
+# pnpm
+.pnpm-store/
+
+# TLS/SSL certificates (never commit private keys)
+certs/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Windows artifacts
+nul
+
+# Playwright MCP
+.playwright-mcp/

@@ -1,0 +1,26 @@
+# Development overrides - use with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Or for dev-only mode: docker compose -f docker-compose.dev.yml up
+
+services:
+  # Home Assistant only - for local development
+  # Run API and Web locally with pnpm dev
+  homeassistant:
+    image: homeassistant/home-assistant:stable
+    container_name: honeydo-homeassistant-dev
+    ports:
+      - "8123:8123"
+    volumes:
+      - ha_config_dev:/config
+    environment:
+      - TZ=${TZ:-America/Denver}
+    restart: unless-stopped
+    networks:
+      - honeydo-dev-network
+
+networks:
+  honeydo-dev-network:
+    driver: bridge
+
+volumes:
+  ha_config_dev:
+    name: honeydo-ha-config-dev

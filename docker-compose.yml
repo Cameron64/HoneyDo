@@ -1,0 +1,83 @@
+services:
+  # HoneyDo API (Fastify + tRPC)
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: honeydo-api
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - API_HOST=0.0.0.0
+      - API_PORT=3001
+      - DATABASE_URL=/app/apps/api/data/honeydo.db
+      - CORS_ORIGIN=http://localhost
+      - HOME_ASSISTANT_URL=http://homeassistant:8123
+      # Secrets should be passed via .env file or Docker secrets
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+      - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
+    volumes:
+      - api_data:/app/apps/api/data
+    depends_on:
+      - homeassistant
+    restart: unless-stopped
+    networks:
+      - honeydo-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # HoneyDo Web (React PWA)
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:3001
+        - VITE_WS_URL=ws://localhost:3001
+        - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+    container_name: honeydo-web
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - honeydo-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Home Assistant
+  homeassistant:
+    image: homeassistant/home-assistant:stable
+    container_name: honeydo-homeassistant
+    ports:
+      - "8123:8123"
+    volumes:
+      - ha_config:/config
+    environment:
+      - TZ=${TZ:-America/Denver}
+    restart: unless-stopped
+    networks:
+      - honeydo-network
+    privileged: true
+
+networks:
+  honeydo-network:
+    driver: bridge
+
+volumes:
+  api_data:
+    name: honeydo-api-data
+  ha_config:
+    name: honeydo-ha-config

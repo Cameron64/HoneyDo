@@ -1,0 +1,47 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+**/dist
+.turbo
+**/.turbo
+
+# Development files
+.git
+.gitignore
+*.md
+!README.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__
+coverage
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs
+
+# Data files (will be mounted as volumes)
+apps/api/data
+
+# Docker files (not needed in build context for individual containers)
+docker-compose*.yml
+Dockerfile

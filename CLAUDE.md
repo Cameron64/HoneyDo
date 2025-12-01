@@ -6,6 +6,15 @@ HoneyDo is a modular household management platform for a two-person household. I
 
 **Key Principle**: AI is plumbing, not a gimmick. Every module can leverage AI through a shared service.
 
+## Epic Status
+
+| Epic | Status | Completion | Description |
+|------|--------|------------|-------------|
+| **Epic 1: Foundation** | ✅ Done | 100% | Project setup, auth, database, API, frontend shell, WebSocket, settings, PWA |
+| **Epic 2: Shopping List** | ✅ Done | 100% | Lists, items, categories, real-time sync, AI features, undo |
+| **Epic 3: Home Automation** | ✅ Done | 100% | HA connection, entity control, favorites, scenes (scheduler pending) |
+| **Epic 4: Recipes** | ✅ Done | 100% | Preferences, AI suggestions, meal planning, shopping integration (scheduler pending)
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -31,9 +40,9 @@ honeydo/
 │   │       ├── app/           # Routes/pages
 │   │       ├── components/    # Shared UI components
 │   │       ├── modules/       # Feature modules
-│   │       │   ├── shopping-list/
-│   │       │   ├── recipes/
-│   │       │   └── home-automation/
+│   │       │   ├── shopping/  # Shopping List (Epic 2) ✅
+│   │       │   ├── home/      # Home Automation (Epic 3) ✅
+│   │       │   └── recipes/   # Recipes & Meal Planning (Epic 4) ✅
 │   │       ├── services/      # API clients
 │   │       ├── stores/        # Zustand stores
 │   │       └── hooks/         # Custom hooks
@@ -41,12 +50,21 @@ honeydo/
 │       └── src/
 │           ├── server.ts      # Entry point
 │           ├── modules/       # tRPC routers per module
-│           ├── services/      # Shared services (ai, auth, ha)
+│           │   ├── shopping/  # Shopping List (Epic 2) ✅
+│           │   ├── home/      # Home Automation (Epic 3) ✅
+│           │   └── recipes/   # Recipes & Meal Planning (Epic 4) ✅
+│           ├── services/      # Shared services (ai, auth, ha, meal-suggestions)
+│           ├── prompts/       # AI system prompts (meal-suggestions.md)
 │           ├── db/            # Drizzle schema + migrations
 │           └── middleware/
 ├── packages/
-│   ├── shared/                # Types, Zod schemas, utils
-│   └── ui/                    # Shared UI components (if needed)
+│   └── shared/                # Types, Zod schemas, constants
+│       └── src/
+│           ├── types/         # TypeScript interfaces
+│           ├── schemas/       # Zod validation schemas
+│           └── constants/     # Categories, units, etc.
+├── data/                      # Local data files
+│   └── recipes/               # Recipe history JSON
 └── docs/                      # Documentation (plans, epics, features)
 ```
 
@@ -78,6 +96,31 @@ pnpm --filter @honeydo/api db:migrate    # Run migrations
 pnpm --filter @honeydo/api db:studio     # Drizzle Studio
 ```
 
+## Docker Commands
+
+```bash
+# Start full stack (API + Web + Home Assistant)
+docker compose up -d
+
+# Start Home Assistant only (for local dev)
+docker compose -f docker-compose.dev.yml up -d
+
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs -f
+docker compose logs -f api        # API logs only
+docker compose logs -f homeassistant  # HA logs only
+
+# Rebuild after code changes
+docker compose build
+docker compose up -d
+
+# Full rebuild (no cache)
+docker compose build --no-cache
+```
+
 ## Key Conventions
 
 ### File Naming
@@ -88,65 +131,223 @@ pnpm --filter @honeydo/api db:studio     # Drizzle Studio
 
 ### Code Patterns
 
-**tRPC Router Definition**:
+**tRPC Router Definition** (multi-router pattern for larger modules):
 ```typescript
-// apps/api/src/modules/shopping-list/router.ts
-export const shoppingListRouter = router({
-  getAll: protectedProcedure.query(async ({ ctx }) => {
-    return ctx.db.query.shoppingLists.findMany();
-  }),
-
-  create: protectedProcedure
-    .input(createListSchema)
-    .mutation(async ({ ctx, input }) => {
-      // implementation
-    }),
+// apps/api/src/modules/shopping/router.ts (3-router pattern)
+export const shoppingRouter = router({
+  lists: listsRouter,    // List CRUD
+  items: itemsRouter,    // Item operations
+  ai: aiRouter,          // AI features
 });
+
+// apps/api/src/modules/home/router.ts (5-router pattern)
+export const homeRouter = router({
+  config: configRouter,      // HA connection config (admin)
+  entities: entitiesRouter,  // Entity queries
+  actions: actionsRouter,    // Device control
+  favorites: favoritesRouter,// User favorites
+  scenes: scenesRouter,      // Custom scenes
+});
+
+// apps/api/src/modules/recipes/router.ts (5-router pattern)
+export const recipesRouter = router({
+  preferences: preferencesRouter,  // User meal preferences
+  suggestions: suggestionsRouter,  // AI meal suggestions
+  meals: mealsRouter,              // Accepted meals (calendar)
+  shopping: shoppingRouter,        // Ingredient aggregation
+  schedule: scheduleRouter,        // Auto-suggestion scheduling
+});
+
+// Usage:
+trpc.shopping.lists.getDefault.useQuery();
+trpc.shopping.items.add.useMutation();
+trpc.home.config.getStatus.useQuery();
+trpc.home.actions.toggle.useMutation();
+trpc.recipes.preferences.get.useQuery();
+trpc.recipes.suggestions.request.useMutation();
 ```
 
-**Frontend Query Hook**:
+**Frontend Query Hook with Real-time Sync**:
 ```typescript
-// Use tRPC hooks directly
-const { data, isLoading } = trpc.shoppingList.getAll.useQuery();
-const createMutation = trpc.shoppingList.create.useMutation();
+// Use tRPC hooks with WebSocket sync
+const { data: list } = trpc.shopping.lists.getDefault.useQuery();
+useShoppingSync({ listId: list?.id }); // Sets up WebSocket listeners
+
+const checkItem = trpc.shopping.items.check.useMutation({
+  onMutate: async ({ id, checked }) => {
+    // Optimistic update
+    utils.shopping.lists.getById.setData({ id: listId }, (old) => ({
+      ...old!,
+      items: old!.items.map((item) =>
+        item.id === id ? { ...item, checked } : item
+      ),
+    }));
+  },
+});
 ```
 
 **Zod Schema (shared)**:
 ```typescript
-// packages/shared/src/schemas/shopping-list.ts
-export const createListSchema = z.object({
-  name: z.string().min(1).max(100),
+// packages/shared/src/schemas/shopping.ts
+export const createShoppingItemSchema = z.object({
+  listId: z.string(),
+  name: z.string().min(1, 'Item name is required').max(200),
+  quantity: z.number().positive().optional(),
+  unit: z.string().max(50).optional(),
+  category: shoppingCategorySchema.optional(), // From constants
+  note: z.string().max(500).optional(),
 });
 
-export type CreateListInput = z.infer<typeof createListSchema>;
+export type CreateShoppingItemInput = z.infer<typeof createShoppingItemSchema>;
 ```
 
-**Drizzle Schema**:
+**Drizzle Schema with Relations**:
 ```typescript
-// apps/api/src/db/schema/shopping-list.ts
-export const shoppingLists = sqliteTable('shopping_lists', {
+// apps/api/src/db/schema/shopping.ts
+export const shoppingItems = sqliteTable('shopping_items', {
+  id: text('id').primaryKey().$defaultFn(() => nanoid()),
+  listId: text('list_id').notNull().references(() => shoppingLists.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  category: text('category').$type<ShoppingCategoryId>(),
+  checked: integer('checked', { mode: 'boolean' }).notNull().default(false),
+  checkedBy: text('checked_by').references(() => users.id, { onDelete: 'set null' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+});
+
+// apps/api/src/db/schema/home-automation.ts
+export const haEntities = sqliteTable('ha_entities', {
+  entityId: text('entity_id').primaryKey(),       // e.g., "light.living_room"
+  domain: text('domain').notNull(),               // e.g., "light"
+  friendlyName: text('friendly_name'),
+  state: text('state').notNull(),                 // e.g., "on", "off", "unavailable"
+  attributes: text('attributes', { mode: 'json' }),// JSON object
+  areaId: text('area_id'),
+  lastChanged: text('last_changed'),
+  lastUpdated: text('last_updated'),
+}, (table) => ({
+  domainIdx: index('idx_ha_entities_domain').on(table.domain),
+}));
+
+export const haScenes = sqliteTable('ha_scenes', {
   id: text('id').primaryKey().$defaultFn(() => nanoid()),
   name: text('name').notNull(),
-  createdBy: text('created_by').references(() => users.id),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  icon: text('icon'),
+  description: text('description'),
+  actions: text('actions', { mode: 'json' }).notNull(), // Array of service calls
+  createdBy: text('created_by').notNull().references(() => users.id),
+  isShared: integer('is_shared', { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 });
 ```
 
 ### WebSocket Events
 - Namespace: `module:entity:action`
-- Examples: `shopping:item:added`, `home:device:state-changed`
+- Examples: `shopping:item:added`, `shopping:item:checked`, `home:entity:state-changed`
+
+**Emitting Events (backend)**:
+```typescript
+socketEmitter.toOthers(ctx.userId, 'shopping:item:added', item);
+socketEmitter.broadcast('home:entity:state-changed', { entityId, state, attributes });
+```
+
+**Handling Events (frontend)**:
+```typescript
+useSocketEvent('shopping:item:added', handleItemAdded);
+useSocketEvent('home:entity:state-changed', handleStateChanged);
+```
+
+**Home Automation WebSocket Events**:
+```typescript
+// Connection status
+'home:connection:status'     // { connected: boolean, error?: string }
+
+// Entity state changes (from Home Assistant)
+'home:entity:state-changed'  // { entityId, oldState, newState, attributes }
+
+// Action execution
+'home:action:executed'       // { entityId, service, status, error? }
+
+// Scene events
+'home:scene:activated'       // { sceneId, activatedBy }
+'home:scene:created'         // HAScene
+'home:scene:updated'         // HAScene
+'home:scene:deleted'         // { id }
+```
 
 ### AI Service Usage
 ```typescript
-// Backend
-const result = await aiService.complete({
-  module: 'shopping-list',
-  prompt: 'Expand "taco stuff" into ingredients',
-  context: { existingItems: [...] }
-});
+// Backend - currently rule-based, ready for Anthropic SDK
+const result = await aiService.expandItem(itemName, existingItems);
+// Returns: [{ name: 'Ground beef', quantity: 1, unit: 'lb', category: 'meat' }, ...]
 
-// For JSON responses
-const data = await aiService.json<ExpansionResult>(prompt);
+const category = await aiService.categorizeItem('milk');
+// Returns: 'dairy'
+```
+
+### Home Automation Patterns
+
+**Supported Domains**:
+```typescript
+// Controllable (can call services)
+const CONTROLLABLE_DOMAINS = ['light', 'switch', 'fan', 'climate', 'lock', 'cover'];
+
+// Read-only (display only)
+const READONLY_DOMAINS = ['sensor', 'binary_sensor'];
+
+// Sensitive (require confirmation)
+const SENSITIVE_DOMAINS = ['lock', 'cover']; // Garage doors, door locks
+```
+
+**Entity Control Actions**:
+```typescript
+// Generic service call
+trpc.home.actions.callService.useMutation();
+// Input: { entityId, service: 'turn_on' | 'turn_off' | 'toggle', data?: {} }
+
+// Quick toggle (lights, switches)
+trpc.home.actions.toggle.useMutation();
+// Input: { entityId }
+
+// Light brightness (0-255)
+trpc.home.actions.setBrightness.useMutation();
+// Input: { entityId, brightness }
+
+// Climate temperature
+trpc.home.actions.setTemperature.useMutation();
+// Input: { entityId, temperature, hvacMode? }
+
+// Lock control (requires confirmation)
+trpc.home.actions.setLockState.useMutation();
+// Input: { entityId, locked, confirmed: true }
+```
+
+**Custom Scenes**:
+```typescript
+// Scene with multiple actions
+const scene = {
+  name: 'Movie Night',
+  icon: 'mdi:movie',
+  actions: [
+    { entityId: 'light.living_room', service: 'turn_on', data: { brightness: 50 } },
+    { entityId: 'light.kitchen', service: 'turn_off' },
+    { entityId: 'switch.tv', service: 'turn_on' },
+  ],
+};
+
+// Activate scene
+trpc.home.scenes.activate.useMutation();
+// Executes all actions in sequence
+```
+
+**Admin vs Protected Procedures**:
+```typescript
+// Admin-only (connection config)
+adminProcedure  // For: configure, disconnect, reconnect
+
+// Protected (user actions)
+protectedProcedure  // For: toggle, favorites, scenes
 ```
 
 ## Important Files
@@ -242,9 +443,66 @@ VITE_WS_URL=ws://localhost:3001
 | Task | Location |
 |------|----------|
 | Add new tRPC route | `apps/api/src/modules/<module>/router.ts` |
-| Add new page | `apps/web/src/app/routes/<module>/` |
+| Add new page | `apps/web/src/pages/` + update `router.tsx` |
 | Add new component | `apps/web/src/components/` or `apps/web/src/modules/<module>/components/` |
 | Add shared type | `packages/shared/src/types/` |
 | Add Zod schema | `packages/shared/src/schemas/` |
 | Add DB table | `apps/api/src/db/schema/` |
-| Add WebSocket event | `apps/api/src/services/websocket.ts` |
+| Add WebSocket event | `apps/api/src/services/websocket/` |
+
+## Detailed Documentation
+
+This project has comprehensive Claude instruction files throughout the codebase. Use these for detailed patterns and examples:
+
+### Core Documentation
+
+| Area | Location | Purpose |
+|------|----------|---------|
+| **API Backend** | `apps/api/CLAUDE.md` | Fastify, tRPC, services |
+| **Database** | `apps/api/src/db/CLAUDE.md` | Drizzle ORM patterns |
+| **Modules (API)** | `apps/api/src/modules/CLAUDE.md` | Creating new modules |
+| **Web Frontend** | `apps/web/CLAUDE.md` | React, routing, state |
+| **Components** | `apps/web/src/components/CLAUDE.md` | UI component patterns |
+| **Modules (Web)** | `apps/web/src/modules/CLAUDE.md` | Frontend module organization |
+| **Shared Package** | `packages/shared/CLAUDE.md` | Types, Zod schemas |
+| **Schemas** | `packages/shared/src/schemas/CLAUDE.md` | Zod schema patterns |
+| **Constants** | `packages/shared/src/constants/CLAUDE.md` | Category/unit constants |
+| **Documentation** | `docs/CLAUDE.md` | Doc structure, standards |
+| **Docker** | `docker/CLAUDE.md` | Container setup, compose files |
+
+### Epic 2 (Shopping) Documentation
+
+| Area | Location | Purpose |
+|------|----------|---------|
+| **Backend Module** | `apps/api/src/modules/shopping/CLAUDE.md` | API routes, WebSocket, AI |
+| **Frontend Module** | `apps/web/src/modules/shopping/CLAUDE.md` | Components, hooks, stores |
+
+### Epic 3 (Home Automation) Documentation
+
+| Area | Location | Purpose |
+|------|----------|---------|
+| **Backend Module** | `apps/api/src/modules/home/CLAUDE.md` | HA connection, entity control, scenes, AI |
+| **Frontend Module** | `apps/web/src/modules/home/CLAUDE.md` | Entity cards, favorites, scene management |
+
+### Epic 4 (Recipes) Documentation
+
+| Area | Location | Purpose |
+|------|----------|---------|
+| **Backend Module** | `apps/api/src/modules/recipes/CLAUDE.md` | Preferences, suggestions, meals, Claude skill integration |
+| **Frontend Module** | `apps/web/src/modules/recipes/CLAUDE.md` | Preferences UI, suggestion workflow, meal calendar |
+
+### When to Use Each File
+
+- **Starting a new module?** → Read `apps/api/src/modules/CLAUDE.md` first, then see `shopping/CLAUDE.md` or `home/CLAUDE.md` as examples
+- **Adding a database table?** → Read `apps/api/src/db/CLAUDE.md`
+- **Creating React components?** → Read `apps/web/src/components/CLAUDE.md` and module-specific CLAUDE.md
+- **Adding types/validation?** → Read `packages/shared/CLAUDE.md` and `packages/shared/src/schemas/CLAUDE.md`
+- **Adding constants?** → Read `packages/shared/src/constants/CLAUDE.md`
+- **Need tRPC examples?** → Read `apps/api/CLAUDE.md` and module-specific CLAUDE.md files
+- **Need WebSocket sync examples?** → Read `apps/web/src/modules/shopping/CLAUDE.md` or `home/CLAUDE.md`
+- **Need routing/state examples?** → Read `apps/web/CLAUDE.md`
+- **Working with Home Assistant?** → Read `apps/api/src/modules/home/CLAUDE.md` for integration patterns
+- **Need device control patterns?** → Read `apps/web/src/modules/home/CLAUDE.md` for entity cards and actions
+- **Working with recipes/meal planning?** → Read `apps/api/src/modules/recipes/CLAUDE.md` for AI suggestion patterns
+- **Need Claude skill integration?** → Read `apps/api/src/modules/recipes/CLAUDE.md` for headless CLI patterns
+- **Docker setup or deployment?** → Read `docker/CLAUDE.md` for container configuration

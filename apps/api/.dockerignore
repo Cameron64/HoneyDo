@@ -1,0 +1,24 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+
+# Development files
+*.md
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Data directory
+data/
+
+# Logs
+*.log
