@@ -184,7 +184,7 @@ Status: ✅ Done | 🚧 In Progress | ⏳ Planned | ❌ Blocked
 | **Epic 1: Foundation** | ✅ Done | 8 features |
 | **Epic 2: Shopping List** | ✅ Done | 6 features |
 | **Epic 3: Home Automation** | ✅ Done | 6 features |
-| **Epic 4: Recipes** | ✅ Done | Features complete (scheduler pending) |
+| **Epic 4: Recipes** | ✅ Done | Features complete with wizard system |
 
 ## Code Examples in Docs
 
@@ -273,6 +273,7 @@ Related: [Authentication](../1-foundation/features/2-authentication/PLAN.md)
 | Database patterns | `apps/api/src/db/CLAUDE.md` |
 | Shopping List (Epic 2) | `apps/api/src/modules/shopping/CLAUDE.md`, `apps/web/src/modules/shopping/CLAUDE.md` |
 | Home Automation (Epic 3) | `apps/api/src/modules/home/CLAUDE.md`, `apps/web/src/modules/home/CLAUDE.md` |
+| Recipes (Epic 4) | `apps/api/src/modules/recipes/CLAUDE.md`, `apps/web/src/modules/recipes/CLAUDE.md` |
 
 ## Documentation Checklist
 

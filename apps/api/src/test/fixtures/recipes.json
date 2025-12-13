@@ -1,0 +1,104 @@
+{
+  "recipes": [
+    {
+      "id": "recipe-001",
+      "name": "Lemon Herb Chicken",
+      "source": "Test Kitchen",
+      "sourceUrl": "https://example.com/lemon-chicken",
+      "cuisine": "Mediterranean",
+      "prepTimeMinutes": 15,
+      "cookTimeMinutes": 45,
+      "totalTimeMinutes": 60,
+      "effort": 3,
+      "defaultServings": 4,
+      "ingredients": [
+        { "name": "chicken breast", "amount": 4, "unit": "pieces" },
+        { "name": "lemon", "amount": 2, "unit": "whole" },
+        { "name": "rosemary", "amount": 2, "unit": "sprigs" },
+        { "name": "garlic", "amount": 4, "unit": "cloves" },
+        { "name": "olive oil", "amount": 3, "unit": "tbsp" }
+      ],
+      "instructions": [
+        "Preheat oven to 400°F",
+        "Season chicken with salt and pepper",
+        "Arrange in baking dish with lemon slices",
+        "Roast for 45 minutes until cooked through"
+      ],
+      "tags": ["weeknight", "one-pan", "healthy"],
+      "rating": 5,
+      "timesMade": 8,
+      "lastMade": "2024-12-15",
+      "archived": false,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-12-15T00:00:00.000Z"
+    },
+    {
+      "id": "recipe-002",
+      "name": "Quick Beef Tacos",
+      "source": "Family Recipe",
+      "sourceUrl": null,
+      "cuisine": "Mexican",
+      "prepTimeMinutes": 10,
+      "cookTimeMinutes": 15,
+      "totalTimeMinutes": 25,
+      "effort": 2,
+      "defaultServings": 4,
+      "ingredients": [
+        { "name": "ground beef", "amount": 1, "unit": "lb" },
+        { "name": "taco seasoning", "amount": 1, "unit": "packet" },
+        { "name": "tortillas", "amount": 8, "unit": "pieces" },
+        { "name": "shredded cheese", "amount": 1, "unit": "cup" },
+        { "name": "salsa", "amount": 0.5, "unit": "cup" }
+      ],
+      "instructions": [
+        "Brown beef in skillet",
+        "Add seasoning and water",
+        "Simmer until thickened",
+        "Serve in warmed tortillas with toppings"
+      ],
+      "tags": ["weeknight", "kid-friendly", "quick"],
+      "rating": 4,
+      "timesMade": 12,
+      "lastMade": "2024-12-10",
+      "archived": false,
+      "createdAt": "2024-02-15T00:00:00.000Z",
+      "updatedAt": "2024-12-10T00:00:00.000Z"
+    },
+    {
+      "id": "recipe-003",
+      "name": "Vegetable Stir Fry",
+      "source": "Online",
+      "sourceUrl": "https://example.com/stir-fry",
+      "cuisine": "Asian",
+      "prepTimeMinutes": 20,
+      "cookTimeMinutes": 10,
+      "totalTimeMinutes": 30,
+      "effort": 2,
+      "defaultServings": 2,
+      "ingredients": [
+        { "name": "broccoli", "amount": 2, "unit": "cups" },
+        { "name": "bell pepper", "amount": 1, "unit": "whole" },
+        { "name": "soy sauce", "amount": 3, "unit": "tbsp" },
+        { "name": "ginger", "amount": 1, "unit": "inch" },
+        { "name": "garlic", "amount": 2, "unit": "cloves" }
+      ],
+      "instructions": [
+        "Prep all vegetables",
+        "Heat wok over high heat",
+        "Stir fry vegetables in batches",
+        "Add sauce and toss to coat"
+      ],
+      "tags": ["vegetarian", "quick", "healthy"],
+      "rating": 4,
+      "timesMade": 5,
+      "lastMade": "2024-11-20",
+      "archived": false,
+      "createdAt": "2024-03-01T00:00:00.000Z",
+      "updatedAt": "2024-11-20T00:00:00.000Z"
+    }
+  ],
+  "metadata": {
+    "lastUpdated": "2024-12-15",
+    "totalRecipes": 3
+  }
+}

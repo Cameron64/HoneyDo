@@ -224,8 +224,20 @@ export const step2ActionsRouter = router({
       });
     }
 
-    const acceptedCount = (session.acceptedMealIds || []).length;
-    const targetCount = session.targetMealCount || 7;
+    const acceptedMealIds = (session.acceptedMealIds || []) as string[];
+    const acceptedCount = acceptedMealIds.length;
+
+    // Calculate total target count:
+    // total = rolloverCount + manualPickCount + aiTargetCount
+    // So we need: acceptedCount >= manualPickCount + aiTargetCount
+    // (rollovers are already in the batch, not in acceptedMealIds)
+    const totalMealCount = session.totalMealCount;
+    const rolloverCount = session.rolloverCount ?? 0;
+
+    // Target for step 2 completion = manual picks + AI suggestions (excludes rollovers)
+    const targetCount = totalMealCount != null
+      ? totalMealCount - rolloverCount  // manual picks + AI suggestions
+      : (session.targetMealCount || 7);
 
     if (acceptedCount < targetCount) {
       throw new TRPCError({

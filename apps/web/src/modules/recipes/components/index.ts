@@ -1,5 +1,7 @@
 // Main Pages
 export { RecipesPage } from './RecipesPage';
+export { BatchHistoryPage } from './history/BatchHistoryPage';
+export { RecipeLibraryPage } from './history/RecipeHistoryPage';
 
 // Preferences
 export { PreferencesPage } from './preferences/PreferencesPage';
@@ -15,6 +17,7 @@ export { RequestSuggestionsDialog } from './suggestions/RequestSuggestionsDialog
 
 // Meals
 export { MealPlanPage } from './meals/MealPlanPage';
+export { BatchManagementPage } from './meals/BatchManagementPage';
 export { MealCard } from './meals/MealCard';
 export { MealDetailSheet } from './meals/MealDetailSheet';
 
@@ -25,3 +28,6 @@ export { IngredientRow } from './shopping/IngredientRow';
 // Wizard
 export { NewBatchWizard } from './wizard/NewBatchWizard';
 export { WizardProgress } from './wizard/WizardProgress';
+
+// Import
+export { RecipeImportSheet } from './import/RecipeImportSheet';

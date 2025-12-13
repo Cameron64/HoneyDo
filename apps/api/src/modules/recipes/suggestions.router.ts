@@ -6,22 +6,17 @@ import {
   acceptMealSchema,
   rejectMealSchema,
   setServingsSchema,
-  type SkillInput,
+  fetchMoreSuggestionsSchema,
 } from '@honeydo/shared';
 import {
   mealSuggestions,
   acceptedMeals,
-  mealPreferences,
-  ingredientPreferences,
-  mealPreferenceNotes,
   type MealSuggestionItem,
 } from '../../db/schema';
-import { eq, and, desc, gte } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { socketEmitter } from '../../services/websocket/emitter';
-import {
-  mealSuggestionsService,
-  getCurrentSeason,
-} from '../../services/meal-suggestions';
+import { mealSuggestionsService } from '../../services/meal-suggestions';
+import { buildSkillInput } from './helpers';
 
 export const suggestionsRouter = router({
   // Manual trigger - request new suggestions
@@ -39,85 +34,27 @@ export const suggestionsRouter = router({
         })
         .returning();
 
-      // Build skill input by gathering all preferences
-      const [prefs, ingredients, notes, recentMealsData] = await Promise.all([
-        ctx.db.query.mealPreferences.findFirst({
-          where: eq(mealPreferences.userId, ctx.userId),
-        }),
-        ctx.db.query.ingredientPreferences.findMany({
-          where: eq(ingredientPreferences.userId, ctx.userId),
-        }),
-        ctx.db.query.mealPreferenceNotes.findMany({
-          where: and(
-            eq(mealPreferenceNotes.userId, ctx.userId),
-            eq(mealPreferenceNotes.isActive, true)
-          ),
-        }),
-        // Get recent meals from the last 14 days to avoid repetition
-        ctx.db.query.acceptedMeals.findMany({
-          where: gte(
-            acceptedMeals.date,
-            new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
-              .toISOString()
-              .split('T')[0]
-          ),
-          orderBy: desc(acceptedMeals.date),
-          limit: 21, // Up to 3 weeks of dinners
-        }),
-      ]);
-
-      const skillInput: SkillInput = {
-        dateRange: {
-          start: input.dateRangeStart,
-          end: input.dateRangeEnd,
-        },
+      // Build skill input using helper
+      const skillInput = await buildSkillInput(ctx.db, {
+        userId: ctx.userId,
+        dateRange: { start: input.dateRangeStart, end: input.dateRangeEnd },
         mealTypes: input.mealTypes,
-        servings: prefs?.defaultServings ?? 4,
         suggestionsCount: 7, // Default to 7 suggestions for a week
-        recentMeals: recentMealsData.map((m) => ({
-          date: m.date,
-          mealType: m.mealType,
-          recipeName: m.recipeName,
-          cuisine: (m.recipeData as { cuisine?: string })?.cuisine ?? 'Unknown',
-        })),
-        preferences: {
-          cuisinePreferences:
-            (prefs?.cuisinePreferences as Record<
-              string,
-              { maxPerWeek: number; preference: string }
-            >) ?? {},
-          dietaryRestrictions:
-            (prefs?.dietaryRestrictions as Array<{
-              name: string;
-              scope: 'always' | 'weekly';
-              mealsPerWeek?: number;
-            }>) ?? [],
-          weeknightMaxMinutes: prefs?.weeknightMaxMinutes ?? 45,
-          weekendMaxMinutes: prefs?.weekendMaxMinutes ?? 120,
-          weeknightMaxEffort: prefs?.weeknightMaxEffort ?? 3,
-          weekendMaxEffort: prefs?.weekendMaxEffort ?? 5,
-        },
-        ingredientPreferences: ingredients.map((i) => ({
-          ingredient: i.ingredient,
-          preference: i.preference,
-          notes: i.notes,
-        })),
-        notes: notes.map((n) => ({
-          type: n.noteType,
-          content: n.content,
-        })),
-        context: {
-          season: getCurrentSeason(),
-          currentDate: new Date().toISOString().split('T')[0],
-        },
-      };
+      });
 
       // Call the meal suggestions service asynchronously
       // This runs in the background and updates the DB when complete
       console.log('[MealSuggestions] Starting suggestion generation for request:', request.id);
       const userId = ctx.userId; // Capture userId before async operation
-      mealSuggestionsService
-        .getSuggestions(skillInput)
+
+      // Use persistent session for better performance (no cold start)
+      // Fall back to legacy CLI spawn if USE_LEGACY_CLAUDE_CLI is set
+      const useLegacy = process.env.USE_LEGACY_CLAUDE_CLI === 'true';
+      const suggestionsPromise = useLegacy
+        ? mealSuggestionsService.getSuggestions(skillInput)
+        : mealSuggestionsService.getSuggestionsWithSession(skillInput);
+
+      suggestionsPromise
         .then(async (output) => {
           console.log('[MealSuggestions] Received output:', JSON.stringify(output).slice(0, 500));
           // Transform output to MealSuggestionItem format
@@ -475,81 +412,21 @@ export const suggestionsRouter = router({
       })
       .where(eq(mealSuggestions.id, input));
 
-    // Re-build skill input and trigger again
-    const [prefs, ingredients, notes, recentMealsData] = await Promise.all([
-      ctx.db.query.mealPreferences.findFirst({
-        where: eq(mealPreferences.userId, ctx.userId),
-      }),
-      ctx.db.query.ingredientPreferences.findMany({
-        where: eq(ingredientPreferences.userId, ctx.userId),
-      }),
-      ctx.db.query.mealPreferenceNotes.findMany({
-        where: and(
-          eq(mealPreferenceNotes.userId, ctx.userId),
-          eq(mealPreferenceNotes.isActive, true)
-        ),
-      }),
-      ctx.db.query.acceptedMeals.findMany({
-        where: gte(
-          acceptedMeals.date,
-          new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
-            .toISOString()
-            .split('T')[0]
-        ),
-        orderBy: desc(acceptedMeals.date),
-        limit: 21,
-      }),
-    ]);
-
-    const skillInput: SkillInput = {
-      dateRange: {
-        start: request.dateRangeStart,
-        end: request.dateRangeEnd,
-      },
+    // Re-build skill input using helper and trigger again
+    const skillInput = await buildSkillInput(ctx.db, {
+      userId: ctx.userId,
+      dateRange: { start: request.dateRangeStart, end: request.dateRangeEnd },
       mealTypes: ['dinner'], // Default to dinner for retries
-      servings: prefs?.defaultServings ?? 4,
       suggestionsCount: 7, // Default to 7 suggestions for retry
-      recentMeals: recentMealsData.map((m) => ({
-        date: m.date,
-        mealType: m.mealType,
-        recipeName: m.recipeName,
-        cuisine: (m.recipeData as { cuisine?: string })?.cuisine ?? 'Unknown',
-      })),
-      preferences: {
-        cuisinePreferences:
-          (prefs?.cuisinePreferences as Record<
-            string,
-            { maxPerWeek: number; preference: string }
-          >) ?? {},
-        dietaryRestrictions:
-          (prefs?.dietaryRestrictions as Array<{
-            name: string;
-            scope: 'always' | 'weekly';
-            mealsPerWeek?: number;
-          }>) ?? [],
-        weeknightMaxMinutes: prefs?.weeknightMaxMinutes ?? 45,
-        weekendMaxMinutes: prefs?.weekendMaxMinutes ?? 120,
-        weeknightMaxEffort: prefs?.weeknightMaxEffort ?? 3,
-        weekendMaxEffort: prefs?.weekendMaxEffort ?? 5,
-      },
-      ingredientPreferences: ingredients.map((i) => ({
-        ingredient: i.ingredient,
-        preference: i.preference,
-        notes: i.notes,
-      })),
-      notes: notes.map((n) => ({
-        type: n.noteType,
-        content: n.content,
-      })),
-      context: {
-        season: getCurrentSeason(),
-        currentDate: new Date().toISOString().split('T')[0],
-      },
-    };
+    });
 
-    // Re-trigger skill invocation
-    mealSuggestionsService
-      .getSuggestions(skillInput)
+    // Re-trigger skill invocation using session method for better performance
+    const useLegacy = process.env.USE_LEGACY_CLAUDE_CLI === 'true';
+    const retryPromise = useLegacy
+      ? mealSuggestionsService.getSuggestions(skillInput)
+      : mealSuggestionsService.getSuggestionsWithSession(skillInput);
+
+    retryPromise
       .then(async (output) => {
         const suggestions: MealSuggestionItem[] = output.suggestions.map(
           (s) => ({
@@ -595,4 +472,128 @@ export const suggestionsRouter = router({
 
     return { requestId: input, status: 'pending' };
   }),
+
+  // Fetch more alternatives for a specific meal slot (when user rejects all options)
+  fetchMore: protectedProcedure
+    .input(fetchMoreSuggestionsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const suggestion = await ctx.db.query.mealSuggestions.findFirst({
+        where: and(
+          eq(mealSuggestions.id, input.suggestionId),
+          eq(mealSuggestions.requestedBy, ctx.userId)
+        ),
+      });
+
+      if (!suggestion || !suggestion.suggestions) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Suggestion not found',
+        });
+      }
+
+      const meals = suggestion.suggestions as MealSuggestionItem[];
+      const targetMeal = meals[input.mealIndex];
+
+      if (!targetMeal) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Meal index out of range',
+        });
+      }
+
+      // Get recipe names to exclude (already suggested or rejected)
+      const excludeRecipes = meals.map((m) => m.recipe.name);
+
+      // Build skill input using helper with additional context
+      const skillInput = await buildSkillInput(ctx.db, {
+        userId: ctx.userId,
+        dateRange: { start: targetMeal.date, end: targetMeal.date },
+        mealTypes: [targetMeal.mealType],
+        suggestionsCount: input.count,
+        // Include current suggestions as "recent meals" to avoid duplicates
+        additionalRecentMeals: meals.map((m) => ({
+          date: m.date,
+          mealType: m.mealType,
+          recipeName: m.recipe.name,
+          cuisine: m.recipe.cuisine,
+        })),
+        additionalNotes: [
+          {
+            type: 'rule',
+            content: `IMPORTANT: Do NOT suggest these recipes as they were already shown: ${excludeRecipes.join(', ')}`,
+          },
+        ],
+      });
+
+      const userId = ctx.userId;
+      const suggestionId = input.suggestionId;
+      const mealIndex = input.mealIndex;
+
+      // Call the meal suggestions service asynchronously using session method
+      console.log('[MealSuggestions] Fetching more alternatives for meal index:', mealIndex);
+      const useLegacy = process.env.USE_LEGACY_CLAUDE_CLI === 'true';
+      const fetchMorePromise = useLegacy
+        ? mealSuggestionsService.getSuggestions(skillInput)
+        : mealSuggestionsService.getSuggestionsWithSession(skillInput);
+
+      fetchMorePromise
+        .then(async (output) => {
+          console.log('[MealSuggestions] Received', output.suggestions.length, 'alternatives');
+
+          // Get fresh suggestion data to avoid race conditions
+          const freshSuggestion = await ctx.db.query.mealSuggestions.findFirst({
+            where: eq(mealSuggestions.id, suggestionId),
+          });
+
+          if (!freshSuggestion?.suggestions) {
+            console.error('[MealSuggestions] Suggestion disappeared during fetch');
+            return;
+          }
+
+          const currentMeals = freshSuggestion.suggestions as MealSuggestionItem[];
+
+          // Replace the rejected meal with the first new suggestion
+          if (output.suggestions.length > 0) {
+            const newSuggestion = output.suggestions[0];
+            currentMeals[mealIndex] = {
+              date: targetMeal.date,
+              mealType: targetMeal.mealType,
+              recipe: newSuggestion.recipe,
+              accepted: null,
+              servingsOverride: null,
+              notes: null,
+            };
+
+            await ctx.db
+              .update(mealSuggestions)
+              .set({
+                suggestions: currentMeals,
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(mealSuggestions.id, suggestionId));
+
+            // Notify frontend
+            socketEmitter.toUser(userId, 'recipes:suggestions:more-received', {
+              suggestionId,
+              newCount: output.suggestions.length,
+              totalHidden: currentMeals.length - (freshSuggestion.visibleCount ?? currentMeals.length),
+            });
+          } else {
+            // No more alternatives found
+            socketEmitter.toUser(userId, 'recipes:suggestions:more-error', {
+              suggestionId,
+              error: 'No more alternatives found. Try adjusting your preferences.',
+            });
+          }
+        })
+        .catch(async (error) => {
+          console.error('[MealSuggestions] Error fetching more alternatives:', error);
+          socketEmitter.toUser(userId, 'recipes:suggestions:more-error', {
+            suggestionId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+
+      return { status: 'fetching' };
+    }),
 });

@@ -21,6 +21,10 @@ import { trpc } from '@/lib/trpc';
 import { SHOPPING_CATEGORIES, QUANTITY_UNITS, type ShoppingCategoryId } from '@honeydo/shared';
 import type { ShoppingItem } from '@honeydo/shared';
 
+// Sentinel values for "no selection" since Radix Select doesn't allow empty string values
+const NO_UNIT = '__none__';
+const NO_CATEGORY = '__uncategorized__';
+
 interface ItemEditSheetProps {
   item: ShoppingItem | null;
   open: boolean;
@@ -30,8 +34,8 @@ interface ItemEditSheetProps {
 export function ItemEditSheet({ item, open, onOpenChange }: ItemEditSheetProps) {
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('');
-  const [category, setCategory] = useState<ShoppingCategoryId | ''>('');
+  const [unit, setUnit] = useState(NO_UNIT);
+  const [category, setCategory] = useState<ShoppingCategoryId | typeof NO_CATEGORY>(NO_CATEGORY);
   const [note, setNote] = useState('');
 
   const utils = trpc.useUtils();
@@ -40,6 +44,7 @@ export function ItemEditSheet({ item, open, onOpenChange }: ItemEditSheetProps) 
     onSuccess: () => {
       if (item) {
         utils.shopping.lists.getById.invalidate({ id: item.listId });
+        utils.shopping.lists.getDefault.invalidate();
       }
       onOpenChange(false);
     },
@@ -50,14 +55,14 @@ export function ItemEditSheet({ item, open, onOpenChange }: ItemEditSheetProps) 
     if (item) {
       setName(item.name);
       setQuantity(item.quantity?.toString() ?? '');
-      setUnit(item.unit ?? '');
-      setCategory((item.category as ShoppingCategoryId) ?? '');
+      setUnit(item.unit ?? NO_UNIT);
+      setCategory((item.category as ShoppingCategoryId) ?? NO_CATEGORY);
       setNote(item.note ?? '');
     } else {
       setName('');
       setQuantity('');
-      setUnit('');
-      setCategory('');
+      setUnit(NO_UNIT);
+      setCategory(NO_CATEGORY);
       setNote('');
     }
   }, [item]);
@@ -70,8 +75,8 @@ export function ItemEditSheet({ item, open, onOpenChange }: ItemEditSheetProps) 
       id: item.id,
       name: name.trim(),
       quantity: quantity ? parseFloat(quantity) : null,
-      unit: unit || null,
-      category: category || null,
+      unit: unit === NO_UNIT ? null : unit,
+      category: category === NO_CATEGORY ? null : category,
       note: note.trim() || null,
     });
   };
@@ -115,7 +120,7 @@ export function ItemEditSheet({ item, open, onOpenChange }: ItemEditSheetProps) 
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value={NO_UNIT}>None</SelectItem>
                   {QUANTITY_UNITS.map((u) => (
                     <SelectItem key={u} value={u}>
                       {u}
@@ -128,12 +133,12 @@ export function ItemEditSheet({ item, open, onOpenChange }: ItemEditSheetProps) 
 
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as ShoppingCategoryId)}>
+            <Select value={category} onValueChange={(v) => setCategory(v as ShoppingCategoryId | typeof NO_CATEGORY)}>
               <SelectTrigger id="category">
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Uncategorized</SelectItem>
+                <SelectItem value={NO_CATEGORY}>Uncategorized</SelectItem>
                 {SHOPPING_CATEGORIES.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>
                     {cat.name}

@@ -27,7 +27,7 @@ HoneyDo is a modular household management platform for a two-person household. I
 | Database | SQLite + Drizzle ORM |
 | Auth | Clerk (OAuth) |
 | Real-time | Socket.io |
-| AI | Anthropic Claude SDK |
+| AI | Claude Code Agent SDK (`@anthropic-ai/claude-agent-sdk`) |
 | Validation | Zod (shared schemas) |
 
 ## Monorepo Structure
@@ -53,7 +53,9 @@ honeydo/
 │           │   ├── shopping/  # Shopping List (Epic 2) ✅
 │           │   ├── home/      # Home Automation (Epic 3) ✅
 │           │   └── recipes/   # Recipes & Meal Planning (Epic 4) ✅
-│           ├── services/      # Shared services (ai, auth, ha, meal-suggestions)
+│           │       ├── wizard/    # Multi-step batch wizard (12 files)
+│           │       └── *.router.ts
+│           ├── services/      # Shared services (claude-session, meal-suggestions, recipe-history)
 │           ├── prompts/       # AI system prompts (meal-suggestions.md)
 │           ├── db/            # Drizzle schema + migrations
 │           └── middleware/
@@ -121,6 +123,14 @@ docker compose up -d
 docker compose build --no-cache
 ```
 
+## Troubleshooting
+
+### Can't access app on phone via Tailscale
+1. **Check Tailscale is running** on both PC and phone - this is the most common issue!
+2. Verify both servers are running: `netstat -an | grep -E "5173|3001"`
+3. Check Windows Firewall allows ports 5173 and 3001
+4. URL should be: `https://cams-work-comp.taila29c19.ts.net:5173`
+
 ## Key Conventions
 
 ### File Naming
@@ -149,13 +159,15 @@ export const homeRouter = router({
   scenes: scenesRouter,      // Custom scenes
 });
 
-// apps/api/src/modules/recipes/router.ts (5-router pattern)
+// apps/api/src/modules/recipes/router.ts (7-router pattern)
 export const recipesRouter = router({
   preferences: preferencesRouter,  // User meal preferences
   suggestions: suggestionsRouter,  // AI meal suggestions
   meals: mealsRouter,              // Accepted meals (calendar)
   shopping: shoppingRouter,        // Ingredient aggregation
   schedule: scheduleRouter,        // Auto-suggestion scheduling
+  wizard: wizardRouter,            // Multi-step batch wizard
+  history: historyRouter,          // Recipe/batch history
 });
 
 // Usage:
@@ -165,6 +177,8 @@ trpc.home.config.getStatus.useQuery();
 trpc.home.actions.toggle.useMutation();
 trpc.recipes.preferences.get.useQuery();
 trpc.recipes.suggestions.request.useMutation();
+trpc.recipes.wizard.start.useQuery();
+trpc.recipes.history.getRecipes.useQuery();
 ```
 
 **Frontend Query Hook with Real-time Sync**:
@@ -277,11 +291,47 @@ useSocketEvent('home:entity:state-changed', handleStateChanged);
 ```
 
 ### AI Service Usage
-```typescript
-// Backend - currently rule-based, ready for Anthropic SDK
-const result = await aiService.expandItem(itemName, existingItems);
-// Returns: [{ name: 'Ground beef', quantity: 1, unit: 'lb', category: 'meat' }, ...]
 
+**Claude Session Service** (persistent session for meal suggestions):
+```typescript
+// Uses @anthropic-ai/claude-agent-sdk with persistent sessions
+import { getClaudeSession } from './services/claude-session';
+
+const session = getClaudeSession();
+await session.warmup(); // Called on server startup
+
+// Query with session resumption
+const result = await session.runQuery({
+  prompt: 'Generate meal suggestions...',
+  systemPrompt: mealSuggestionsPrompt,
+  onMessage: (msg) => {
+    // Stream activity updates to frontend
+    if (msg.type === 'assistant' && msg.message.content) {
+      emitActivity(msg.message.content);
+    }
+  },
+});
+```
+
+**Meal Suggestions Service**:
+```typescript
+// Two methods available:
+// 1. Persistent session (faster, recommended)
+const suggestions = await mealSuggestions.getSuggestionsWithSession({
+  preferences,
+  dateRange,
+  activityCallback: (message) => {
+    // Real-time progress updates via WebSocket
+    socketEmitter.toUser(userId, 'recipes:activity', { message });
+  },
+});
+
+// 2. CLI spawn (fallback)
+const suggestions = await mealSuggestions.getSuggestions({ preferences, dateRange });
+```
+
+**Item Categorization** (rule-based):
+```typescript
 const category = await aiService.categorizeItem('milk');
 // Returns: 'dairy'
 ```
@@ -358,6 +408,8 @@ protectedProcedure  // For: toggle, favorites, scenes
 - `apps/api/src/db/schema/` - Database schemas
 - `packages/shared/src/schemas/` - Zod validation schemas
 - `apps/web/src/modules/` - Frontend module code
+- `apps/api/src/services/claude-session.ts` - Persistent Claude session service
+- `apps/api/src/modules/recipes/wizard/` - Multi-step batch wizard (12 files)
 
 ## Module System
 
@@ -461,14 +513,21 @@ This project has comprehensive Claude instruction files throughout the codebase.
 | **API Backend** | `apps/api/CLAUDE.md` | Fastify, tRPC, services |
 | **Database** | `apps/api/src/db/CLAUDE.md` | Drizzle ORM patterns |
 | **Modules (API)** | `apps/api/src/modules/CLAUDE.md` | Creating new modules |
+| **Services** | `apps/api/src/services/CLAUDE.md` | Claude session, WebSocket, HA integration |
+| **AI Prompts** | `apps/api/src/prompts/CLAUDE.md` | System prompts for AI features |
 | **Web Frontend** | `apps/web/CLAUDE.md` | React, routing, state |
 | **Components** | `apps/web/src/components/CLAUDE.md` | UI component patterns |
 | **Modules (Web)** | `apps/web/src/modules/CLAUDE.md` | Frontend module organization |
+| **Hooks** | `apps/web/src/hooks/CLAUDE.md` | Custom React hooks |
+| **Stores** | `apps/web/src/stores/CLAUDE.md` | Zustand state management |
+| **Socket Services** | `apps/web/src/services/CLAUDE.md` | WebSocket client, real-time sync |
 | **Shared Package** | `packages/shared/CLAUDE.md` | Types, Zod schemas |
 | **Schemas** | `packages/shared/src/schemas/CLAUDE.md` | Zod schema patterns |
 | **Constants** | `packages/shared/src/constants/CLAUDE.md` | Category/unit constants |
 | **Documentation** | `docs/CLAUDE.md` | Doc structure, standards |
 | **Docker** | `docker/CLAUDE.md` | Container setup, compose files |
+| **MCP Servers** | `apps/mcp-servers/CLAUDE.md` | Model Context Protocol servers |
+| **Scripts** | `scripts/CLAUDE.md` | Utility scripts, maintenance |
 
 ### Epic 2 (Shopping) Documentation
 
@@ -488,8 +547,9 @@ This project has comprehensive Claude instruction files throughout the codebase.
 
 | Area | Location | Purpose |
 |------|----------|---------|
-| **Backend Module** | `apps/api/src/modules/recipes/CLAUDE.md` | Preferences, suggestions, meals, Claude skill integration |
-| **Frontend Module** | `apps/web/src/modules/recipes/CLAUDE.md` | Preferences UI, suggestion workflow, meal calendar |
+| **Backend Module** | `apps/api/src/modules/recipes/CLAUDE.md` | Preferences, suggestions, meals, wizard, Claude session integration |
+| **Wizard System** | `apps/api/src/modules/recipes/wizard/CLAUDE.md` | Multi-step batch wizard (4 steps, 15 files) |
+| **Frontend Module** | `apps/web/src/modules/recipes/CLAUDE.md` | Preferences UI, suggestion workflow, meal calendar, batch wizard |
 
 ### When to Use Each File
 
@@ -499,10 +559,16 @@ This project has comprehensive Claude instruction files throughout the codebase.
 - **Adding types/validation?** → Read `packages/shared/CLAUDE.md` and `packages/shared/src/schemas/CLAUDE.md`
 - **Adding constants?** → Read `packages/shared/src/constants/CLAUDE.md`
 - **Need tRPC examples?** → Read `apps/api/CLAUDE.md` and module-specific CLAUDE.md files
-- **Need WebSocket sync examples?** → Read `apps/web/src/modules/shopping/CLAUDE.md` or `home/CLAUDE.md`
+- **Need WebSocket sync examples?** → Read `apps/web/src/services/CLAUDE.md` and `apps/web/src/modules/shopping/CLAUDE.md`
 - **Need routing/state examples?** → Read `apps/web/CLAUDE.md`
 - **Working with Home Assistant?** → Read `apps/api/src/modules/home/CLAUDE.md` for integration patterns
 - **Need device control patterns?** → Read `apps/web/src/modules/home/CLAUDE.md` for entity cards and actions
 - **Working with recipes/meal planning?** → Read `apps/api/src/modules/recipes/CLAUDE.md` for AI suggestion patterns
-- **Need Claude skill integration?** → Read `apps/api/src/modules/recipes/CLAUDE.md` for headless CLI patterns
+- **Need Claude session integration?** → Read `apps/api/src/services/CLAUDE.md` for persistent Claude session patterns
+- **Building a multi-step wizard?** → Read `apps/api/src/modules/recipes/wizard/CLAUDE.md` for step-by-step guide
+- **Writing AI prompts?** → Read `apps/api/src/prompts/CLAUDE.md` for prompt design patterns
+- **Creating MCP servers/tools?** → Read `apps/mcp-servers/CLAUDE.md` for MCP server patterns
+- **Adding custom React hooks?** → Read `apps/web/src/hooks/CLAUDE.md` for hook patterns
+- **Creating Zustand stores?** → Read `apps/web/src/stores/CLAUDE.md` for state management patterns
+- **Running maintenance scripts?** → Read `scripts/CLAUDE.md` for available scripts
 - **Docker setup or deployment?** → Read `docker/CLAUDE.md` for container configuration

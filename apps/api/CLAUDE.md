@@ -29,7 +29,17 @@ apps/api/src/
 │   ├── seed.ts        # Seeding script
 │   └── schema/        # Drizzle table definitions
 ├── modules/           # Feature modules (each has router.ts)
-├── services/          # Shared services (ai, websocket, etc.)
+│   ├── shopping/      # Shopping List module
+│   ├── home/          # Home Automation module
+│   └── recipes/       # Recipes & Meal Planning module
+│       ├── wizard/    # Multi-step batch wizard (12 files)
+│       └── *.router.ts
+├── services/          # Shared services
+│   ├── websocket/     # Socket.io server & emitter
+│   ├── homeassistant/ # Home Assistant integration
+│   ├── claude-session.ts  # Persistent Claude session service
+│   ├── meal-suggestions.ts # AI meal suggestion service
+│   └── recipe-history.ts   # Recipe history JSON management
 ├── routes/            # Non-tRPC routes (webhooks)
 └── middleware/        # Fastify middleware
 ```
@@ -337,14 +347,67 @@ Located in `src/services/homeassistant/`. See `apps/api/src/modules/home/CLAUDE.
 import { callService, toggleEntity, isHAConnected, getCachedEntities } from '../../services/homeassistant';
 ```
 
-### Meal Suggestions Service (✅ Implemented)
+### Claude Session Service (✅ Implemented)
 
-Located in `src/services/meal-suggestions.ts`. Uses Claude Code in headless mode for AI-powered meal suggestions.
+Located in `src/services/claude-session.ts`. Provides a persistent Claude Code session using `@anthropic-ai/claude-agent-sdk`.
+
+**Key Features:**
+- Session warmup on server startup (eliminates cold start)
+- Queue-based request handling (one request at a time)
+- Session resumption across requests
+- Streaming message callbacks for real-time progress
 
 ```typescript
-import { mealSuggestionsService, getCurrentSeason } from '../../services/meal-suggestions';
+import { getClaudeSession, type QueryResult } from '../../services/claude-session';
 
-// Request suggestions via Claude CLI
+// Get singleton instance
+const session = getClaudeSession();
+
+// Warmup on server startup
+await session.warmup();
+
+// Run a query with streaming callbacks
+const result: QueryResult = await session.runQuery({
+  prompt: 'Generate meal suggestions for next week...',
+  systemPrompt: mealSuggestionsPrompt,
+  onMessage: (message) => {
+    // Stream activity to frontend
+    if (message.type === 'assistant') {
+      socketEmitter.toUser(userId, 'recipes:activity', {
+        message: extractActivityMessage(message),
+      });
+    }
+  },
+});
+
+// Check session status
+session.getStatus(); // 'idle' | 'warming_up' | 'ready' | 'busy' | 'error' | 'closed'
+session.getQueryCount();
+session.getUptime();
+```
+
+### Meal Suggestions Service (✅ Implemented)
+
+Located in `src/services/meal-suggestions.ts`. Two methods available:
+
+**Method 1: Persistent Session (Recommended)**
+```typescript
+import { mealSuggestionsService } from '../../services/meal-suggestions';
+
+// Uses ClaudeSessionService for faster response
+const output = await mealSuggestionsService.getSuggestionsWithSession({
+  preferences,
+  dateRange: { start: '2024-01-15', end: '2024-01-21' },
+  activityCallback: (message) => {
+    // Real-time "girly pop" progress messages (420+ variations!)
+    socketEmitter.toUser(userId, 'recipes:activity', { message });
+  },
+});
+```
+
+**Method 2: CLI Spawn (Fallback)**
+```typescript
+// Spawns Claude CLI for each request
 const output = await mealSuggestionsService.getSuggestions(skillInput);
 // output: { suggestions: [], reasoning: string }
 ```
@@ -368,26 +431,21 @@ socketEmitter.toOthers(userId, 'event:name', data);
 socketEmitter.broadcast('event:name', data);
 ```
 
-### AI Service (Future - Anthropic SDK)
+### Recipe History Service (✅ Implemented)
 
-For future AI features beyond meal suggestions (e.g., shopping item categorization, recipe parsing):
+Located in `src/services/recipe-history.ts`. Manages the JSON-based recipe history file.
 
 ```typescript
-// src/services/ai/index.ts
-import Anthropic from '@anthropic-ai/sdk';
+import { recipeHistoryService } from '../../services/recipe-history';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Get all recipes
+const recipes = await recipeHistoryService.getAll();
 
-export async function aiJSON<T>(prompt: string): Promise<T> {
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
-  });
-  return JSON.parse(response.content[0].text);
-}
+// Search by name
+const results = await recipeHistoryService.search('pasta');
+
+// Add a new recipe to history
+await recipeHistoryService.add(newRecipe);
 ```
 
 ## Testing

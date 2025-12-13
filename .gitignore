@@ -10,10 +10,11 @@ build/
 .env
 .env.local
 .env.*.local
-.env.development
-.env.production
 apps/**/.env
 apps/**/.env.*
+
+# Note: .env.development and .env.production are TEMPLATES and ARE committed
+# They contain safe defaults, not real secrets
 
 # IDE
 .idea/
@@ -30,6 +31,20 @@ npm-debug.log*
 
 # Database
 apps/api/data/
+data/honeydo.db
+data/errors.json
+data/*.db
+
+# Docker persistent data (bind mounts - back up separately!)
+docker/data/
+
+# Docker secrets (NEVER commit production secrets!)
+docker/secrets/.env.prod
+docker/secrets/*.prod
+docker/secrets/*.secret
+
+# Backups (store off-machine!)
+backups/
 
 # Cache
 .cache/

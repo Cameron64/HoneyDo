@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Clock, Users, ChefHat, ChevronDown, ChevronUp, Minus, Plus, ExternalLink, Calendar } from 'lucide-react';
+import { Clock, Users, ChefHat, ChevronDown, ChevronUp, Minus, Plus, ExternalLink, Calendar, Loader2, RefreshCw, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +17,12 @@ interface MealSuggestionCardProps {
   // Optional handlers for wizard context - if provided, these are called instead of default mutations
   onAccept?: (suggestionId: string, mealIndex: number, servings: number) => void;
   onReject?: (suggestionId: string, mealIndex: number) => void;
+  onFetchMore?: (suggestionId: string, mealIndex: number) => void;
   isAccepting?: boolean;
   isRejecting?: boolean;
+  // Show loading state when backfilling more suggestions
+  isBackfilling?: boolean;
+  isFetchingMore?: boolean;
 }
 
 const EFFORT_LABELS = ['Minimal', 'Easy', 'Moderate', 'Involved', 'Complex'];
@@ -29,8 +33,11 @@ export function MealSuggestionCard({
   meal,
   onAccept,
   onReject,
+  onFetchMore,
   isAccepting: externalIsAccepting,
   isRejecting: externalIsRejecting,
+  isBackfilling = false,
+  isFetchingMore: externalIsFetchingMore,
 }: MealSuggestionCardProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [servings, setServings] = useState(meal.servingsOverride ?? meal.recipe.defaultServings);
@@ -63,6 +70,12 @@ export function MealSuggestionCard({
     },
   });
 
+  // Fetch more alternatives mutation
+  const fetchMoreMutation = trpc.recipes.suggestions.fetchMore.useMutation();
+
+  // Use external loading state or mutation state
+  const isFetchingMore = externalIsFetchingMore ?? fetchMoreMutation.isPending;
+
   const isPending = meal.accepted === null;
   const isAccepted = meal.accepted === true;
   const isRejected = meal.accepted === false;
@@ -94,6 +107,20 @@ export function MealSuggestionCard({
     }
   };
 
+  const handleFetchMore = () => {
+    if (onFetchMore) {
+      // Wizard context - use provided handler
+      onFetchMore(suggestionId, mealIndex);
+    } else {
+      // Default context - use mutation directly
+      fetchMoreMutation.mutate({
+        suggestionId,
+        mealIndex,
+        count: 1, // Just get one alternative
+      });
+    }
+  };
+
   const handleServingsChange = (delta: number) => {
     const newServings = Math.max(1, Math.min(20, servings + delta));
     if (newServings !== servings) {
@@ -111,7 +138,7 @@ export function MealSuggestionCard({
       className={cn(
         'transition-all',
         isAccepted && 'bg-green-500/5 border-green-500',
-        isRejected && 'opacity-50 bg-muted'
+        isRejected && 'bg-muted/50 border-muted-foreground/20'
       )}
     >
       <CardContent className="p-4">
@@ -150,7 +177,14 @@ export function MealSuggestionCard({
                 onClick={handleReject}
                 disabled={isRejectingMeal}
               >
-                Pass
+                {isRejectingMeal && isBackfilling ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    Pass
+                  </>
+                ) : (
+                  'Pass'
+                )}
               </Button>
               <Button
                 className="h-10 px-3 bg-green-600 hover:bg-green-700"
@@ -171,6 +205,29 @@ export function MealSuggestionCard({
               </Button>
             </Link>
           )}
+
+          {/* Get Another button for rejected meals */}
+          {isRejected && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={handleFetchMore}
+              disabled={isFetchingMore}
+            >
+              {isFetchingMore ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Finding...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Get Another
+                </>
+              )}
+            </Button>
+          )}
         </div>
 
         {/* Quick Info */}
@@ -183,6 +240,12 @@ export function MealSuggestionCard({
             <ChefHat className="h-4 w-4" />
             {EFFORT_LABELS[meal.recipe.effort - 1]}
           </span>
+          {meal.recipe.nutrition?.calories != null && (
+            <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+              <Flame className="h-4 w-4" />
+              {meal.recipe.nutrition.calories} cal
+            </span>
+          )}
           <Badge variant="outline" className="text-xs">
             {meal.recipe.cuisine}
           </Badge>
@@ -280,6 +343,45 @@ export function MealSuggestionCard({
                 <p className="font-semibold">{meal.recipe.totalTimeMinutes} min</p>
               </div>
             </div>
+
+            {/* Nutrition Macros */}
+            {meal.recipe.nutrition && meal.recipe.nutrition.calories != null && (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-sm font-semibold mb-2 flex items-center gap-1">
+                    <Flame className="h-4 w-4 text-orange-500" />
+                    Nutrition per serving
+                  </p>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="bg-orange-50 dark:bg-orange-950/20 rounded-lg p-2">
+                      <p className="font-bold text-orange-600 dark:text-orange-400">
+                        {meal.recipe.nutrition.calories}
+                      </p>
+                      <p className="text-xs text-muted-foreground">cal</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-2">
+                      <p className="font-bold text-blue-600 dark:text-blue-400">
+                        {meal.recipe.nutrition.protein ?? '-'}g
+                      </p>
+                      <p className="text-xs text-muted-foreground">protein</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-950/20 rounded-lg p-2">
+                      <p className="font-bold text-amber-600 dark:text-amber-400">
+                        {meal.recipe.nutrition.carbohydrates ?? '-'}g
+                      </p>
+                      <p className="text-xs text-muted-foreground">carbs</p>
+                    </div>
+                    <div className="bg-pink-50 dark:bg-pink-950/20 rounded-lg p-2">
+                      <p className="font-bold text-pink-600 dark:text-pink-400">
+                        {meal.recipe.nutrition.fat ?? '-'}g
+                      </p>
+                      <p className="text-xs text-muted-foreground">fat</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
 
             <Separator />
 

@@ -229,12 +229,14 @@ export const step1Router = router({
         .where(eq(batches.id, session.previousBatchId));
     }
 
-    // Update wizard session
+    // Update wizard session with rollover count
+    // The rollover count becomes the floor for total meal count in Step 2a
     await ctx.db
       .update(wizardSessions)
       .set({
         currentStep: 2,
         newBatchId: newBatch.id,
+        rolloverCount: rolloverCount,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(wizardSessions.id, session.id));

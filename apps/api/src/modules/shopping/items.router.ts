@@ -269,6 +269,50 @@ export const itemsRouter = router({
       return { success: true };
     }),
 
+  // Check multiple items at once
+  checkBulk: protectedProcedure
+    .input(z.object({
+      ids: z.array(z.string()).min(1),
+      checked: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const checkedAt = input.checked ? new Date().toISOString() : null;
+      const checkedBy = input.checked ? ctx.userId : null;
+
+      // Update all items
+      const updatedItems = await Promise.all(
+        input.ids.map(async (id) => {
+          const [item] = await ctx.db
+            .update(shoppingItems)
+            .set({
+              checked: input.checked,
+              checkedAt,
+              checkedBy,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(shoppingItems.id, id))
+            .returning();
+          return item;
+        })
+      );
+
+      // Get listId from first item for event and timestamp update
+      if (updatedItems.length > 0 && updatedItems[0]) {
+        await updateListTimestamp(ctx.db, updatedItems[0].listId);
+
+        // Emit to other household members
+        socketEmitter.toOthers(ctx.userId, 'shopping:items:checked', {
+          ids: input.ids,
+          listId: updatedItems[0].listId,
+          checked: input.checked,
+          checkedBy,
+          checkedAt,
+        });
+      }
+
+      return updatedItems;
+    }),
+
   // Clear all checked items
   clearChecked: protectedProcedure
     .input(clearCheckedItemsSchema)

@@ -89,7 +89,7 @@ function aggregateIngredients(meals: MealForAggregation[]): AggregatedIngredient
       if (ing.optional) continue;
 
       const key = normalizeIngredientName(ing.name);
-      const scaledAmount = ing.amount * scaleFactor;
+      const scaledAmount = (ing.amount ?? 0) * scaleFactor;
 
       if (map.has(key)) {
         const existing = map.get(key)!;
@@ -262,6 +262,7 @@ export const shoppingRouter = router({
         note: ing.note ?? null,
         sortOrder: index,
         addedBy: ctx.userId,
+        fromMeals: ing.fromMeals ?? null,
       }));
 
       const insertedItems = await ctx.db.insert(shoppingItems).values(items).returning();

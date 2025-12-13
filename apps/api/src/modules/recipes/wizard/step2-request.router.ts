@@ -12,6 +12,7 @@ import {
   wizardSessions,
   mealSuggestions,
   type MealSuggestionItem,
+  type ManualPickEntry,
 } from '../../../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { socketEmitter } from '../../../services/websocket/emitter';
@@ -36,13 +37,30 @@ export const step2RequestRouter = router({
         });
       }
 
-      // Calculate how many suggestions to request
-      const targetCount = session.targetMealCount || 7;
+      // Calculate how many AI suggestions to request
+      // AI target = totalMealCount - manualPickCount - rolloverCount
+      // Rollovers are meals carried over from the previous batch
+      const manualPickCount = session.manualPickCount ?? 0;
+      const rolloverCount = session.rolloverCount ?? 0;
+      const totalMealCount = session.totalMealCount ?? session.targetMealCount ?? 7;
+      const aiTargetCount = totalMealCount - manualPickCount - rolloverCount;
+
+      // Count already accepted AI meals (exclude manual picks)
       const acceptedMealIds = (session.acceptedMealIds || []) as string[];
-      const acceptedCount = acceptedMealIds.length;
+      const manualPicks = (session.manualPickIds ?? []) as ManualPickEntry[];
+      // The acceptedCount should only count AI-accepted meals, not manual picks
+      // Manual picks are already tracked separately
+      const acceptedCount = acceptedMealIds.length - manualPicks.length;
+      const stillNeeded = Math.max(0, aiTargetCount - acceptedCount);
+
+      // If no AI suggestions needed (all manual), return early
+      if (aiTargetCount <= 0 || stillNeeded <= 0) {
+        return { requestId: null, status: 'not_needed', message: 'All meals are manual picks' };
+      }
+
       // Request DOUBLE what we need to show (4 visible + 4 hidden for seamless replacements)
       // This allows users to reject suggestions and immediately see replacements
-      const visibleCount = Math.max(4, targetCount - acceptedCount);
+      const visibleCount = Math.max(4, stillNeeded);
       const suggestionsCount = visibleCount * 2; // Request double for hidden backups
 
       // Create pending request record
@@ -66,7 +84,8 @@ export const step2RequestRouter = router({
         })
         .where(eq(wizardSessions.id, session.id));
 
-      // Build skill input
+      // Build skill input, excluding manually picked recipes
+      const manualPickNames = manualPicks.map((p) => p.recipeName);
       const skillInput = await buildSkillInput({
         db: ctx.db,
         userId: ctx.userId,
@@ -74,12 +93,25 @@ export const step2RequestRouter = router({
         dateRangeEnd: input.dateRangeEnd,
         mealTypes: input.mealTypes,
         suggestionsCount,
+        excludeRecipeNames: manualPickNames.length > 0 ? manualPickNames : undefined,
       });
 
       // Call the meal suggestions service asynchronously
       const userId = ctx.userId;
-      mealSuggestionsService
-        .getSuggestions(skillInput)
+
+      // Activity callback for streaming progress to the user
+      const onActivity = (message: string, type: 'thinking' | 'querying' | 'results', progress: number) => {
+        socketEmitter.toUser(userId, 'recipes:suggestions:activity', { message, type, progress });
+      };
+
+      // Use persistent session for better performance (no cold start)
+      // Fall back to legacy CLI spawn if USE_LEGACY_CLAUDE_CLI is set
+      const useLegacy = process.env.USE_LEGACY_CLAUDE_CLI === 'true';
+      const suggestionsPromise = useLegacy
+        ? mealSuggestionsService.getSuggestions(skillInput, onActivity)
+        : mealSuggestionsService.getSuggestionsWithSession(skillInput, onActivity);
+
+      suggestionsPromise
         .then(async (output) => {
           const suggestions: MealSuggestionItem[] = output.suggestions.map(
             (s) => ({
@@ -183,8 +215,14 @@ export const step2RequestRouter = router({
       const userId = ctx.userId;
       const suggestionId = input.suggestionId;
 
-      mealSuggestionsService
-        .getSuggestions(skillInput)
+      // Use persistent session for better performance (no cold start)
+      // Fall back to legacy CLI spawn if USE_LEGACY_CLAUDE_CLI is set
+      const useLegacyMore = process.env.USE_LEGACY_CLAUDE_CLI === 'true';
+      const morePromise = useLegacyMore
+        ? mealSuggestionsService.getSuggestions(skillInput)
+        : mealSuggestionsService.getSuggestionsWithSession(skillInput);
+
+      morePromise
         .then(async (output) => {
           // Get the latest suggestion data (may have changed while fetching)
           const latestSuggestion = await ctx.db.query.mealSuggestions.findFirst({

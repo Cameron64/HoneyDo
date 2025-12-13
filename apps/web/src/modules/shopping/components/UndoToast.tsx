@@ -15,6 +15,7 @@ export function UndoToast() {
     onSuccess: () => {
       if (latestAction) {
         utils.shopping.lists.getById.invalidate({ id: latestAction.listId });
+        utils.shopping.lists.getDefault.invalidate();
       }
     },
   });
@@ -23,6 +24,7 @@ export function UndoToast() {
     onSuccess: () => {
       if (latestAction) {
         utils.shopping.lists.getById.invalidate({ id: latestAction.listId });
+        utils.shopping.lists.getDefault.invalidate();
       }
     },
   });

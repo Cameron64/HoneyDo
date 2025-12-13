@@ -223,6 +223,18 @@ Complete implementation for Epic 4. See `recipes/CLAUDE.md` for details.
 - `ShoppingGenerationPage` - Ingredient aggregation
 - `IngredientRow` - Selectable ingredient row
 
+**Components (wizard/):**
+- `NewBatchWizard` - Main wizard controller
+- `WizardProgress` - Step progress indicator
+- `steps/ManageBatchStep` - Step 1: Handle previous batch
+- `steps/GetSuggestionsStep` - Step 2: AI suggestion review
+- `steps/ManageShoppingStep` - Step 3: Ingredient selection
+- `steps/CompletionStep` - Step 4: Summary
+
+**Components (history/):**
+- `BatchHistoryPage` - Past batch list
+- `RecipeHistoryPage` - Full recipe library
+
 **Hooks:**
 - `useRecipesSync` - WebSocket event handlers
 

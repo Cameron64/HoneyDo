@@ -1,0 +1,64 @@
+# =============================================================================
+# HoneyDo Docker Compose - Production Overrides
+# =============================================================================
+# Run with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Or: pnpm docker:prod
+#
+# IMPORTANT: Requires docker/secrets/.env.prod with production secrets!
+# =============================================================================
+
+services:
+  api:
+    container_name: honeydo-api-prod
+    env_file:
+      - docker/secrets/.env.prod
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=warn
+      - DATABASE_URL=/app/apps/api/data/honeydo.db
+      # Strict CORS for production (HTTPS)
+      - CORS_ORIGIN=https://localhost,https://cams-work-comp.taila29c19.ts.net
+    volumes:
+      # Production data directory (isolated from dev)
+      - ./docker/data/prod/api:/app/apps/api/data
+      # Shared data directory (recipes, errors log)
+      - ./data:/app/data
+      # SSL certificates for HTTPS
+      - ./certs:/app/certs:ro
+    # Override container name to avoid conflicts
+    labels:
+      - "com.honeydo.environment=production"
+    healthcheck:
+      # Override for HTTPS (API auto-enables HTTPS when it finds certs)
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "--no-check-certificate", "https://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  web:
+    container_name: honeydo-web-prod
+    ports:
+      - "8080:80"    # HTTP redirect
+      - "8443:443"   # HTTPS
+    volumes:
+      # Mount SSL certificates
+      - ./certs:/etc/nginx/certs:ro
+      # Use SSL nginx config
+      - ./apps/web/nginx-ssl.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      - "com.honeydo.environment=production"
+    healthcheck:
+      # Override for HTTPS (prod uses Tailscale certs)
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "--no-check-certificate", "https://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  homeassistant:
+    container_name: honeydo-homeassistant
+    volumes:
+      # Shared Home Assistant data (same instance for dev and prod)
+      - ./docker/data/homeassistant:/config
+    labels:
+      - "com.honeydo.environment=production"

@@ -72,7 +72,7 @@ export function useSwipeGesture({
     }
   }, [threshold, preventScroll]);
 
-  const handleTouchEnd = useCallback(() => {
+  const handleTouchEnd = useCallback((_e?: React.TouchEvent) => {
     const deltaX = touchCurrentX.current - touchStartX.current;
 
     // Only trigger if it was a horizontal swipe gesture

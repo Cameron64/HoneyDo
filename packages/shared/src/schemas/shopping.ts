@@ -55,6 +55,7 @@ export const shoppingItemSchema = z.object({
   addedBy: z.string(),
   sortOrder: z.number().int(),
   googleKeepItemId: z.string().nullable(),
+  fromMeals: z.array(z.string()).nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

@@ -1,23 +1,18 @@
 import { router, TRPCError } from '../../trpc';
 import { protectedProcedure } from '../../trpc/procedures';
 import { z } from 'zod';
-import { dateRangeSchema, type SkillInput } from '@honeydo/shared';
+import { dateRangeSchema } from '@honeydo/shared';
 import { db } from '../../db';
 import {
   acceptedMeals,
   batches,
-  mealPreferences,
-  ingredientPreferences,
-  mealPreferenceNotes,
   mealSuggestions,
   type MealSuggestionItem,
 } from '../../db/schema';
 import { eq, and, gte, lte, desc, isNull } from 'drizzle-orm';
 import { socketEmitter } from '../../services/websocket/emitter';
-import {
-  mealSuggestionsService,
-  getCurrentSeason,
-} from '../../services/meal-suggestions';
+import { mealSuggestionsService } from '../../services/meal-suggestions';
+import { buildSkillInput } from './helpers';
 
 // Audible reason schema
 const audibleReasonSchema = z.enum([
@@ -160,11 +155,15 @@ export const mealsRouter = router({
 
   // Get meals from the current active batch
   getCurrentBatch: protectedProcedure.query(async ({ ctx }) => {
+    console.log('[getCurrentBatch] Looking for active batch for user:', ctx.userId);
+
     // Find the active batch for the user
     const activeBatch = await ctx.db.query.batches.findFirst({
       where: and(eq(batches.userId, ctx.userId), eq(batches.status, 'active')),
       orderBy: desc(batches.createdAt),
     });
+
+    console.log('[getCurrentBatch] Found batch:', activeBatch?.id, 'name:', activeBatch?.name);
 
     let meals;
     if (activeBatch) {
@@ -172,12 +171,15 @@ export const mealsRouter = router({
         where: eq(acceptedMeals.batchId, activeBatch.id),
         orderBy: [acceptedMeals.date, acceptedMeals.mealType],
       });
+      console.log('[getCurrentBatch] Found', meals.length, 'meals in batch');
     } else {
+      console.log('[getCurrentBatch] No active batch, looking for legacy meals without batchId');
       // Legacy: get meals without batch ID
       meals = await ctx.db.query.acceptedMeals.findMany({
         where: isNull(acceptedMeals.batchId),
         orderBy: [acceptedMeals.date, acceptedMeals.mealType],
       });
+      console.log('[getCurrentBatch] Found', meals.length, 'legacy meals');
     }
 
     return {
@@ -256,91 +258,19 @@ export const mealsRouter = router({
         })
         .returning();
 
-      // Build skill input by gathering all preferences
-      const [prefs, ingredients, notes, recentMealsData] = await Promise.all([
-        ctx.db.query.mealPreferences.findFirst({
-          where: eq(mealPreferences.userId, ctx.userId),
-        }),
-        ctx.db.query.ingredientPreferences.findMany({
-          where: eq(ingredientPreferences.userId, ctx.userId),
-        }),
-        ctx.db.query.mealPreferenceNotes.findMany({
-          where: and(
-            eq(mealPreferenceNotes.userId, ctx.userId),
-            eq(mealPreferenceNotes.isActive, true)
-          ),
-        }),
-        // Get recent meals from the last 14 days to avoid repetition
-        ctx.db.query.acceptedMeals.findMany({
-          where: gte(
-            acceptedMeals.date,
-            new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
-              .toISOString()
-              .split('T')[0]
-          ),
-          orderBy: desc(acceptedMeals.date),
-          limit: 21,
-        }),
-      ]);
-
       // Add context about why we're replacing
       const audibleContext = `AUDIBLE REQUEST: User wants to replace "${meal.recipeName}" on ${meal.date}.
 Reason: ${input.reason}${input.details ? `. Details: ${input.details}` : ''}
 Please suggest ONE replacement meal for ${meal.mealType} on ${meal.date} only.`;
 
-      const notesWithAudible = [
-        ...notes.map((n) => ({
-          type: n.noteType,
-          content: n.content,
-        })),
-        {
-          type: 'general' as const,
-          content: audibleContext,
-        },
-      ];
-
-      const skillInput: SkillInput = {
-        dateRange: {
-          start: meal.date,
-          end: meal.date,
-        },
+      // Build skill input using helper with audible context
+      const skillInput = await buildSkillInput(ctx.db, {
+        userId: ctx.userId,
+        dateRange: { start: meal.date, end: meal.date },
         mealTypes: [meal.mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack'],
-        servings: prefs?.defaultServings ?? meal.servings,
         suggestionsCount: 1, // Only need 1 replacement meal
-        recentMeals: recentMealsData.map((m) => ({
-          date: m.date,
-          mealType: m.mealType,
-          recipeName: m.recipeName,
-          cuisine: (m.recipeData as { cuisine?: string })?.cuisine ?? 'Unknown',
-        })),
-        preferences: {
-          cuisinePreferences:
-            (prefs?.cuisinePreferences as Record<
-              string,
-              { maxPerWeek: number; preference: string }
-            >) ?? {},
-          dietaryRestrictions:
-            (prefs?.dietaryRestrictions as Array<{
-              name: string;
-              scope: 'always' | 'weekly';
-              mealsPerWeek?: number;
-            }>) ?? [],
-          weeknightMaxMinutes: prefs?.weeknightMaxMinutes ?? 45,
-          weekendMaxMinutes: prefs?.weekendMaxMinutes ?? 120,
-          weeknightMaxEffort: prefs?.weeknightMaxEffort ?? 3,
-          weekendMaxEffort: prefs?.weekendMaxEffort ?? 5,
-        },
-        ingredientPreferences: ingredients.map((i) => ({
-          ingredient: i.ingredient,
-          preference: i.preference,
-          notes: i.notes,
-        })),
-        notes: notesWithAudible,
-        context: {
-          season: getCurrentSeason(),
-          currentDate: new Date().toISOString().split('T')[0],
-        },
-      };
+        additionalNotes: [{ type: 'general', content: audibleContext }],
+      });
 
       // Call the meal suggestions service asynchronously
       console.log('[Audible] Starting replacement generation for meal:', meal.id);
@@ -349,8 +279,14 @@ Please suggest ONE replacement meal for ${meal.mealType} on ${meal.date} only.`;
       const mealDate = meal.date;
       const mealType = meal.mealType;
 
-      mealSuggestionsService
-        .getSuggestions(skillInput)
+      // Use persistent session for better performance (no cold start)
+      // Fall back to legacy CLI spawn if USE_LEGACY_CLAUDE_CLI is set
+      const useLegacy = process.env.USE_LEGACY_CLAUDE_CLI === 'true';
+      const audiblePromise = useLegacy
+        ? mealSuggestionsService.getSuggestions(skillInput)
+        : mealSuggestionsService.getSuggestionsWithSession(skillInput);
+
+      audiblePromise
         .then(async (output) => {
           console.log('[Audible] Received replacement suggestion, count:', output.suggestions.length);
 
@@ -377,7 +313,7 @@ Please suggest ONE replacement meal for ${meal.mealType} on ${meal.date} only.`;
               mealType: mealType,
               recipeName: replacement.recipe.name,
               recipeData: replacement.recipe,
-              servings: prefs?.defaultServings ?? 4,
+              servings: meal.servings,
             })
             .returning();
           console.log('[Audible] New meal created:', newMeal.id);

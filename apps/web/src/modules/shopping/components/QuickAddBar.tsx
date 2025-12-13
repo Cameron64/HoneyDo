@@ -21,6 +21,7 @@ export function QuickAddBar({ listId, className }: QuickAddBarProps) {
       setInput('');
       inputRef.current?.focus();
       utils.shopping.lists.getById.invalidate({ id: listId });
+      utils.shopping.lists.getDefault.invalidate();
     },
   });
 
@@ -29,6 +30,7 @@ export function QuickAddBar({ listId, className }: QuickAddBarProps) {
       setInput('');
       inputRef.current?.focus();
       utils.shopping.lists.getById.invalidate({ id: listId });
+      utils.shopping.lists.getDefault.invalidate();
     },
   });
 

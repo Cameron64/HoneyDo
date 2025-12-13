@@ -26,7 +26,7 @@ apps/api/src/db/
     ├── modules.ts         # Module registry
     ├── shopping.ts        # Shopping lists/items (Epic 2)
     ├── home-automation.ts # HA entities/scenes/config (Epic 3)
-    └── recipes.ts         # Meal preferences/suggestions/meals (Epic 4)
+    └── recipes.ts         # Meal preferences/suggestions/meals/wizard (Epic 4)
 ```
 
 ## Drizzle Basics

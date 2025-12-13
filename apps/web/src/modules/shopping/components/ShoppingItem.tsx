@@ -11,7 +11,6 @@ import {
 import { trpc } from '@/lib/trpc';
 import { useUndoStore } from '../stores/undo';
 import { formatItemDisplay } from '../utils/parse-item';
-import { CATEGORY_MAP, type ShoppingCategoryId } from '@honeydo/shared';
 import { cn } from '@/lib/utils';
 import type { ShoppingItem as ShoppingItemType } from '@honeydo/shared';
 
@@ -40,17 +39,6 @@ export function ShoppingItem({ item, onEdit }: ShoppingItemProps) {
         };
       });
 
-      // Push undo action
-      if (checked) {
-        pushAction({
-          type: 'check',
-          itemId: id,
-          listId: item.listId,
-          label: `Checked "${item.name}"`,
-          data: { previousData },
-        });
-      }
-
       return { previousData };
     },
     onError: (_err, _variables, context) => {
@@ -61,6 +49,7 @@ export function ShoppingItem({ item, onEdit }: ShoppingItemProps) {
     },
     onSettled: () => {
       utils.shopping.lists.getById.invalidate({ id: item.listId });
+      utils.shopping.lists.getDefault.invalidate();
     },
   });
 
@@ -94,6 +83,7 @@ export function ShoppingItem({ item, onEdit }: ShoppingItemProps) {
     },
     onSettled: () => {
       utils.shopping.lists.getById.invalidate({ id: item.listId });
+      utils.shopping.lists.getDefault.invalidate();
     },
   });
 
@@ -109,8 +99,8 @@ export function ShoppingItem({ item, onEdit }: ShoppingItemProps) {
     onEdit?.(item);
   }, [item, onEdit]);
 
-  const categoryInfo = item.category ? CATEGORY_MAP[item.category as ShoppingCategoryId] : null;
   const displayText = formatItemDisplay(item.name, item.quantity, item.unit);
+  const hasRecipes = item.fromMeals && item.fromMeals.length > 0;
 
   return (
     <div
@@ -134,10 +124,12 @@ export function ShoppingItem({ item, onEdit }: ShoppingItemProps) {
         >
           {displayText}
         </span>
-        {(item.note || categoryInfo) && (
+        {(item.note || hasRecipes) && (
           <div className="flex items-center gap-2 mt-0.5">
-            {categoryInfo && (
-              <span className="text-xs text-muted-foreground">{categoryInfo.name}</span>
+            {hasRecipes && (
+              <span className="text-xs text-muted-foreground truncate">
+                {item.fromMeals!.join(', ')}
+              </span>
             )}
             {item.note && (
               <span className="text-xs text-muted-foreground truncate">{item.note}</span>

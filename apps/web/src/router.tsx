@@ -12,8 +12,11 @@ import {
   RecipesPage,
   PreferencesPage,
   MealPlanPage,
+  BatchManagementPage,
   ShoppingGenerationPage,
   NewBatchWizard,
+  BatchHistoryPage,
+  RecipeLibraryPage,
 } from '@/modules/recipes';
 
 // Root route with basic layout for auth pages
@@ -32,17 +35,17 @@ const authLayoutRoute = createRoute({
   ),
 });
 
-// Sign in route
+// Sign in route (with wildcard for Clerk SSO callbacks like /sign-in/sso-callback)
 const signInRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
-  path: '/sign-in',
+  path: '/sign-in/$',
   component: SignInPage,
 });
 
-// Sign up route
+// Sign up route (with wildcard for Clerk SSO callbacks like /sign-up/sso-callback)
 const signUpRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
-  path: '/sign-up',
+  path: '/sign-up/$',
   component: SignUpPage,
 });
 
@@ -100,10 +103,28 @@ const recipesPlanRoute = createRoute({
   component: MealPlanPage,
 });
 
+const recipesBatchRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/recipes/batch',
+  component: BatchManagementPage,
+});
+
 const recipesShopRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/recipes/shop',
   component: ShoppingGenerationPage,
+});
+
+const recipesHistoryRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/recipes/history',
+  component: BatchHistoryPage,
+});
+
+const recipesLibraryRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/recipes/library',
+  component: RecipeLibraryPage,
 });
 
 const recipesWizardRoute = createRoute({
@@ -137,7 +158,10 @@ const routeTree = rootRoute.addChildren([
     recipesRoute,
     recipesPreferencesRoute,
     recipesPlanRoute,
+    recipesBatchRoute,
     recipesShopRoute,
+    recipesHistoryRoute,
+    recipesLibraryRoute,
     homeAutomationRoute,
     notFoundRoute,
   ]),

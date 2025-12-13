@@ -8,7 +8,11 @@ export const socketEmitter = {
     event: K,
     ...args: Parameters<ServerToClientEvents[K]>
   ) {
-    getIO().to(`user:${userId}`).emit(event, ...args);
+    const io = getIO();
+    const room = `user:${userId}`;
+    const socketsInRoom = io.sockets.adapter.rooms.get(room);
+    console.log(`[socketEmitter.toUser] Emitting ${String(event)} to room ${room} (${socketsInRoom?.size ?? 0} sockets)`);
+    io.to(room).emit(event, ...args);
   },
 
   // Emit to all household members

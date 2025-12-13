@@ -48,12 +48,22 @@ apps/api/src/modules/
 │   └── scenes.router.ts   # Custom scenes
 └── recipes/               # Recipes module (Epic 4) ✅
     ├── CLAUDE.md          # Module-specific instructions
-    ├── router.ts          # Main router (5-router pattern)
+    ├── router.ts          # Main router (7-router pattern)
     ├── preferences.router.ts # User preferences
-    ├── suggestions.router.ts # AI suggestions
+    ├── suggestions.router.ts # AI suggestions (legacy)
     ├── meals.router.ts    # Accepted meals
     ├── shopping.router.ts # Ingredient aggregation
-    └── schedule.router.ts # Auto-suggestion scheduling
+    ├── schedule.router.ts # Auto-suggestion scheduling
+    ├── history.router.ts  # Recipe/batch history
+    └── wizard/            # Multi-step batch wizard (12 files)
+        ├── index.ts       # Flat router combining all procedures
+        ├── session.router.ts  # start, abandon, getSession
+        ├── step1.router.ts    # Manage previous batch
+        ├── step2.router.ts    # AI suggestions (combines sub-routers)
+        ├── step3.router.ts    # Shopping integration
+        ├── step4.router.ts    # Completion summary
+        ├── batches.router.ts  # Batch history
+        └── helpers.ts         # Shared utilities
 ```
 
 ## Real Example: Shopping Module

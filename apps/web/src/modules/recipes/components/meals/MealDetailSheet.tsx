@@ -1,4 +1,5 @@
-import { Clock, Users, ChefHat, ExternalLink, Trash2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Clock, Users, ChefHat, ExternalLink, Trash2, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -22,6 +23,39 @@ const EFFORT_LABELS = ['Minimal', 'Easy', 'Moderate', 'Involved', 'Complex'];
 
 export function MealDetailSheet({ meal, open, onOpenChange }: MealDetailSheetProps) {
   const utils = trpc.useUtils();
+  const historyPushed = useRef(false);
+  const closingFromPopState = useRef(false);
+
+  // Handle browser back button / swipe-back gesture
+  useEffect(() => {
+    if (open && !historyPushed.current) {
+      // Push a history state when sheet opens
+      window.history.pushState({ sheetOpen: true }, '');
+      historyPushed.current = true;
+    }
+
+    const handlePopState = () => {
+      // When user navigates back, close the sheet instead
+      if (historyPushed.current) {
+        historyPushed.current = false;
+        closingFromPopState.current = true;
+        onOpenChange(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [open, onOpenChange]);
+
+  // Clean up history state when sheet closes programmatically (not from back button)
+  useEffect(() => {
+    if (!open && historyPushed.current && !closingFromPopState.current) {
+      // Sheet was closed by clicking X or outside - pop the history state
+      window.history.back();
+      historyPushed.current = false;
+    }
+    closingFromPopState.current = false;
+  }, [open]);
 
   const removeMeal = trpc.recipes.meals.remove.useMutation({
     onSuccess: () => {
@@ -80,6 +114,42 @@ export function MealDetailSheet({ meal, open, onOpenChange }: MealDetailSheetPro
             </div>
           </div>
 
+          {/* Nutrition/Macros */}
+          {recipe.nutrition && recipe.nutrition.calories != null && (
+            <div className="p-4 rounded-lg bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 border border-orange-200/50 dark:border-orange-800/30">
+              <div className="flex items-center gap-2 mb-3">
+                <Flame className="h-4 w-4 text-orange-500" />
+                <h4 className="text-sm font-medium">Nutrition per serving</h4>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                    {recipe.nutrition.calories}
+                  </p>
+                  <p className="text-xs text-muted-foreground">cal</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                    {recipe.nutrition.protein ?? '-'}g
+                  </p>
+                  <p className="text-xs text-muted-foreground">protein</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                    {recipe.nutrition.carbohydrates ?? '-'}g
+                  </p>
+                  <p className="text-xs text-muted-foreground">carbs</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-pink-600 dark:text-pink-400">
+                    {recipe.nutrition.fat ?? '-'}g
+                  </p>
+                  <p className="text-xs text-muted-foreground">fat</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Source */}
           {recipe.source && (
             <div>
@@ -121,7 +191,7 @@ export function MealDetailSheet({ meal, open, onOpenChange }: MealDetailSheetPro
               {recipe.ingredients.map((ing, i) => (
                 <li key={i} className="text-sm text-muted-foreground flex items-center gap-2">
                   <span className="w-16 shrink-0">
-                    {ing.amount > 0 && `${ing.amount} ${ing.unit ?? ''}`}
+                    {(ing.amount ?? 0) > 0 && `${ing.amount} ${ing.unit ?? ''}`}
                   </span>
                   <span>{ing.name}</span>
                   {ing.preparation && (

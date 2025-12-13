@@ -7,9 +7,37 @@ import type { ServerToClientEvents, ClientToServerEvents } from '@honeydo/shared
 let io: SocketServer<ClientToServerEvents, ServerToClientEvents>;
 
 export function initializeWebSocket(httpServer: HttpServer) {
+  // Parse CORS origins from env, or use defaults including Tailscale pattern
+  const corsOrigins = process.env.CORS_ORIGIN?.split(',') ?? [
+    'http://localhost:5173',
+    'http://localhost:8080',
+  ];
+
   io = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: {
-      origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+      origin: (origin, callback) => {
+        // Allow no origin (same-origin requests)
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        // Allow explicit origins from env
+        if (corsOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+        // Allow any Tailscale origin (.ts.net)
+        if (origin.includes('.ts.net')) {
+          callback(null, true);
+          return;
+        }
+        // Reject others in production, allow in dev
+        if (process.env.NODE_ENV === 'production') {
+          callback(new Error('CORS not allowed'), false);
+        } else {
+          callback(null, true);
+        }
+      },
       credentials: true,
     },
     connectionStateRecovery: {

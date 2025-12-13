@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Utensils, Settings, Calendar, ShoppingCart, ChevronRight, Clock, RefreshCw, Wand2 } from 'lucide-react';
+import { Utensils, Settings, Calendar, ShoppingCart, ChevronRight, Clock, RefreshCw, Wand2, BookOpen, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { trpc } from '@/lib/trpc';
 import { useRecipesSync } from '../hooks/use-recipes-sync';
 import { MealDetailSheet } from './meals/MealDetailSheet';
 import { AudibleDialog } from './meals/AudibleDialog';
+import { RecipeImportSheet } from './import/RecipeImportSheet';
 import type { AcceptedMeal } from '@honeydo/shared';
 
 export function RecipesPage() {
@@ -20,6 +21,7 @@ export function RecipesPage() {
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [audibleMeal, setAudibleMeal] = useState<AcceptedMeal | null>(null);
   const [audibleDialogOpen, setAudibleDialogOpen] = useState(false);
+  const [importSheetOpen, setImportSheetOpen] = useState(false);
 
   // Fetch pending shopping count from current batch (not date-based)
   const { data: pendingCount } = trpc.recipes.meals.getCurrentBatchPendingShoppingCount.useQuery();
@@ -37,11 +39,21 @@ export function RecipesPage() {
             <Utensils className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-semibold">Meal Planning</h1>
           </div>
-          <Link to="/recipes/preferences">
-            <Button variant="ghost" size="icon">
-              <Settings className="h-5 w-5" />
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setImportSheetOpen(true)}
+              title="Import Recipe"
+            >
+              <Link2 className="h-5 w-5" />
             </Button>
-          </Link>
+            <Link to="/recipes/preferences">
+              <Button variant="ghost" size="icon">
+                <Settings className="h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -113,17 +125,36 @@ export function RecipesPage() {
             </Card>
           </Link>
 
-          <Link to="/recipes/preferences" className="block">
+          <Link to="/recipes/history" className="block">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-muted">
-                      <Settings className="h-5 w-5 text-muted-foreground" />
+                      <Clock className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium text-sm">Preferences</p>
-                      <p className="text-xs text-muted-foreground">Edit settings</p>
+                      <p className="font-medium text-sm">Batch History</p>
+                      <p className="text-xs text-muted-foreground">Past batches</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link to="/recipes/library" className="block">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted">
+                      <BookOpen className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">Recipe Library</p>
+                      <p className="text-xs text-muted-foreground">Browse recipes</p>
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -138,7 +169,7 @@ export function RecipesPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Current Batch</CardTitle>
-              <Link to="/recipes/plan">
+              <Link to="/recipes/batch">
                 <Button variant="ghost" size="sm" className="text-muted-foreground">
                   View all
                   <ChevronRight className="h-4 w-4 ml-1" />
@@ -224,7 +255,7 @@ export function RecipesPage() {
                   </div>
                 ))}
                 {currentBatchMeals.length > 5 && (
-                  <Link to="/recipes/plan">
+                  <Link to="/recipes/batch">
                     <Button variant="ghost" size="sm" className="w-full">
                       View {currentBatchMeals.length - 5} more meals
                     </Button>
@@ -248,6 +279,12 @@ export function RecipesPage() {
         meal={audibleMeal}
         open={audibleDialogOpen}
         onOpenChange={setAudibleDialogOpen}
+      />
+
+      {/* Recipe Import Sheet */}
+      <RecipeImportSheet
+        open={importSheetOpen}
+        onOpenChange={setImportSheetOpen}
       />
     </div>
   );

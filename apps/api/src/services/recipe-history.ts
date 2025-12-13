@@ -30,7 +30,7 @@ export interface RecipeHistoryEntry {
   servingsUnit: string;
   ingredients: Array<{
     name: string;
-    amount: number;
+    amount: number | null; // Allow null for "to taste" ingredients
     unit: string | null;
     category: string;
     preparation?: string;

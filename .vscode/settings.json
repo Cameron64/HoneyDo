@@ -1,4 +1,5 @@
 {
+  "terminal.integrated.defaultProfile.windows": "Git Bash",
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.codeActionsOnSave": {

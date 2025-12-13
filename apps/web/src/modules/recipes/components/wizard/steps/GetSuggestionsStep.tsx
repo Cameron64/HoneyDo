@@ -1,13 +1,13 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { trpc } from '@/lib/trpc';
 import { SuggestionProgress } from './SuggestionProgress';
 import { MealSuggestionCard } from '../../suggestions/MealSuggestionCard';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useRecipesSync } from '../../../hooks/use-recipes-sync';
-import { RefreshCw, Sparkles, AlertCircle, ChevronUp, ChevronDown } from 'lucide-react';
+import { useActivityStore } from '../../../stores/activity';
+import { useSocketEvent } from '@/services/socket/hooks';
+import { RefreshCw, Sparkles, AlertCircle, Flower2, Hexagon, ChevronLeft } from 'lucide-react';
 import type { WizardSession } from '@honeydo/shared';
 
 interface GetSuggestionsStepProps {
@@ -25,6 +25,64 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
 
   // Local state to track that we've initiated a request and are waiting for AI
   const [isRequestingAI, setIsRequestingAI] = useState(false);
+
+  // Get Claude activity messages from the global store (managed by useRecipesSync)
+  const activityMessage = useActivityStore((s) => s.message);
+  const activityType = useActivityStore((s) => s.type);
+  const activityProgress = useActivityStore((s) => s.progress);
+  const clearActivity = useActivityStore((s) => s.clearActivity);
+
+  // Animate progress with jumpy increments toward 95%
+  const [displayProgress, setDisplayProgress] = useState(0);
+
+  useEffect(() => {
+    // When actual progress updates, jump to it immediately
+    if (activityProgress > displayProgress) {
+      setDisplayProgress(activityProgress);
+    }
+  }, [activityProgress, displayProgress]);
+
+  useEffect(() => {
+    // Jumpy progress toward 95% - random increments at random intervals
+    if (displayProgress > 0 && displayProgress < 95) {
+      // Random delay between 400ms and 1200ms for jumpier feel
+      const delay = 400 + Math.random() * 800;
+
+      const timeout = setTimeout(() => {
+        setDisplayProgress((prev) => {
+          // Random jump between 2-6%, slowing down as we approach 95%
+          const remaining = 95 - prev;
+          const maxJump = Math.min(6, remaining * 0.15);
+          const minJump = Math.min(2, remaining * 0.05);
+          const jump = minJump + Math.random() * (maxJump - minJump);
+          const next = Math.min(95, prev + jump);
+          return Math.round(next);
+        });
+      }, delay);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [displayProgress]);
+
+  // Reset display progress when activity clears
+  useEffect(() => {
+    if (!activityMessage && activityProgress === 0) {
+      setDisplayProgress(0);
+    }
+  }, [activityMessage, activityProgress]);
+
+  // Track backfill state - when we're fetching more hidden suggestions in the background
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const backfillRequestedRef = useRef(false);
+
+  // Listen for WebSocket events to reset backfilling state
+  const handleBackfillComplete = useCallback(() => {
+    setIsBackfilling(false);
+    backfillRequestedRef.current = false;
+  }, []);
+
+  useSocketEvent('recipes:suggestions:more-received', handleBackfillComplete);
+  useSocketEvent('recipes:suggestions:more-error', handleBackfillComplete);
 
   // Use wizard-specific query to get the current session's suggestion (not the global most recent)
   const { data: currentSuggestion, isLoading: isSuggestionLoading } = trpc.recipes.wizard.getCurrentSuggestion.useQuery();
@@ -66,8 +124,9 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
   useEffect(() => {
     if (currentSuggestion?.status === 'received' || currentSuggestion?.status === 'expired') {
       setIsRequestingAI(false);
+      clearActivity(); // Clear activity message when done
     }
-  }, [currentSuggestion?.status]);
+  }, [currentSuggestion?.status, clearActivity]);
 
   const completeStep = trpc.recipes.wizard.completeStep2.useMutation({
     onSuccess: () => {
@@ -78,6 +137,56 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
     },
   });
 
+  // Go back to previous step
+  const goBack = trpc.recipes.wizard.goBack.useMutation({
+    onSuccess: () => {
+      utils.recipes.wizard.start.invalidate();
+      utils.recipes.wizard.getSession.invalidate();
+      onStepComplete(); // Triggers refetch in parent
+    },
+  });
+
+  const handleBack = () => {
+    // If user had manual picks configured, go back to step 2b (manual picks)
+    // Otherwise go back to step 2a (plan batch)
+    const hasManualPicks = (session.manualPickCount ?? 0) > 0;
+    goBack.mutate({ target: hasManualPicks ? 'step2b' : 'step2a' });
+  };
+
+  // Backfill mutation - fetches more hidden suggestions in the background
+  const fetchMoreHidden = trpc.recipes.wizard.fetchMoreHiddenSuggestions.useMutation({
+    onSuccess: () => {
+      setIsBackfilling(false);
+      backfillRequestedRef.current = false;
+      utils.recipes.wizard.getCurrentSuggestion.invalidate();
+    },
+    onError: () => {
+      setIsBackfilling(false);
+      backfillRequestedRef.current = false;
+    },
+  });
+
+  // Helper to check if we need to fetch more suggestions
+  const checkAndTriggerBackfill = useCallback(() => {
+    if (!currentSuggestion || backfillRequestedRef.current || isBackfilling) return;
+
+    // Count remaining pending suggestions (not yet accepted/rejected)
+    const allSuggestions = currentSuggestion.suggestions ?? [];
+    const remainingPending = allSuggestions.filter(
+      (s) => s.accepted === null || s.accepted === undefined
+    ).length;
+
+    // If running low (5 or fewer pending), proactively fetch more
+    if (remainingPending <= 5) {
+      backfillRequestedRef.current = true;
+      setIsBackfilling(true);
+      fetchMoreHidden.mutate({
+        suggestionId: currentSuggestion.id,
+        count: 6, // Fetch more to stay ahead
+      });
+    }
+  }, [currentSuggestion, isBackfilling, fetchMoreHidden]);
+
   // Wizard-specific accept/decline mutations (these handle batch assignment and swap logic)
   const acceptSuggestion = trpc.recipes.wizard.acceptSuggestion.useMutation({
     onSuccess: () => {
@@ -85,13 +194,25 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
       utils.recipes.wizard.getSuggestionProgress.invalidate();
       utils.recipes.meals.getRange.invalidate();
       utils.recipes.meals.getUpcoming.invalidate();
+      // Check if we need more suggestions after accepting
+      setTimeout(checkAndTriggerBackfill, 100);
     },
   });
 
   const declineSuggestion = trpc.recipes.wizard.declineSuggestion.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       // This mutation swaps in a hidden suggestion, so just refetch
       utils.recipes.wizard.getCurrentSuggestion.invalidate();
+
+      // If hidden suggestions are running low, trigger a background backfill
+      if (data.needsMoreSuggestions && currentSuggestion && !backfillRequestedRef.current) {
+        backfillRequestedRef.current = true;
+        setIsBackfilling(true);
+        fetchMoreHidden.mutate({
+          suggestionId: currentSuggestion.id,
+          count: 6, // Fetch more to stay ahead
+        });
+      }
     },
   });
 
@@ -104,11 +225,16 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
     declineSuggestion.mutate({ suggestionId, mealIndex });
   };
 
-  const [targetCount, setTargetCount] = useState(session.targetMealCount ?? 4);
-  const hasSetTarget = session.targetMealCount != null;
+  // Calculate AI target count (from new flow: totalMealCount - manualPickCount - rolloverCount)
+  // Fall back to targetMealCount for backwards compatibility
+  const manualPickCount = session.manualPickCount ?? 0;
+  const rolloverCount = session.rolloverCount ?? 0;
+  const aiTargetCount = session.totalMealCount != null
+    ? session.totalMealCount - manualPickCount - rolloverCount
+    : session.targetMealCount ?? 7;
 
-  // Show loading state if we're fetching initial suggestion data after setting target
-  const isInitialLoading = hasSetTarget && isSuggestionLoading;
+  // Track if we've auto-requested suggestions on mount
+  const hasAutoRequested = useRef(false);
 
   // Calculate date range for next week
   const dateRange = useMemo(() => {
@@ -124,138 +250,101 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
     };
   }, []);
 
-  const handleSetTarget = async () => {
-    await setTarget.mutateAsync({ count: targetCount });
-    // Automatically request first batch of suggestions
-    await requestMore.mutateAsync({
-      dateRangeStart: dateRange.start,
-      dateRangeEnd: dateRange.end,
-      mealTypes: ['dinner'],
-    });
-  };
+  // Auto-request suggestions when arriving at this step without any
+  useEffect(() => {
+    if (hasAutoRequested.current) return;
+    if (currentSuggestion?.status === 'pending' || currentSuggestion?.status === 'received') return;
+    if (requestMore.isPending || isRequestingAI) return;
 
-  // Get visible suggestions - only show up to visibleCount, rest are hidden backups
-  const visibleCount = currentSuggestion?.visibleCount ?? currentSuggestion?.suggestions?.length ?? 0;
+    // If we have a totalMealCount (from new flow) but no AI target set, set it and request
+    if (session.totalMealCount != null && session.targetMealCount == null) {
+      hasAutoRequested.current = true;
+      setTarget.mutate({ count: aiTargetCount }, {
+        onSuccess: () => {
+          requestMore.mutate({
+            dateRangeStart: dateRange.start,
+            dateRangeEnd: dateRange.end,
+            mealTypes: ['dinner'],
+          });
+        },
+      });
+    }
+    // If we have targetMealCount but no suggestions yet, request them
+    else if (session.targetMealCount != null && !currentSuggestion) {
+      hasAutoRequested.current = true;
+      requestMore.mutate({
+        dateRangeStart: dateRange.start,
+        dateRangeEnd: dateRange.end,
+        mealTypes: ['dinner'],
+      });
+    }
+  }, [session.totalMealCount, session.targetMealCount, aiTargetCount, currentSuggestion, requestMore, setTarget, dateRange, isRequestingAI]);
+
+  // Get all suggestions and filter to pending ones (not yet accepted/rejected)
   const allSuggestions = currentSuggestion?.suggestions ?? [];
 
-  // Filter to visible suggestions (first N that are not accepted/rejected)
-  // When a suggestion is rejected, visibleCount should be increased by the backend
-  // to reveal the next hidden suggestion
+  // Show up to 3 pending suggestions at a time for comparison
+  // Filter out accepted (true) and rejected (false) suggestions, keep only pending (null/undefined)
+  const MAX_VISIBLE_CARDS = 3;
   const pendingSuggestions = allSuggestions
-    .slice(0, visibleCount)
-    .filter((s) => s.accepted === null || s.accepted === undefined);
+    .map((s, index) => ({ ...s, originalIndex: index }))
+    .filter((s) => s.accepted === null || s.accepted === undefined)
+    .slice(0, MAX_VISIBLE_CARDS);
 
   const acceptedCount = progress?.acceptedCount ?? 0;
-  const canContinue = acceptedCount >= targetCount;
-
-  // Target count input screen
-  if (!hasSetTarget) {
-    return (
-      <div className="p-4 space-y-6">
-        <div className="space-y-2">
-          <h2 className="text-lg font-medium">How Many Meals?</h2>
-          <p className="text-sm text-muted-foreground">
-            Choose how many meals you want for your new batch.
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="target">Number of meals</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setTargetCount((prev) => Math.max(1, prev - 1))}
-                disabled={targetCount <= 1}
-                aria-label="Decrease"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-              <Input
-                id="target"
-                type="number"
-                min={1}
-                max={21}
-                value={targetCount}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  if (!isNaN(val) && val >= 1 && val <= 21) {
-                    setTargetCount(val);
-                  } else if (e.target.value === '') {
-                    setTargetCount(1);
-                  }
-                }}
-                className="text-lg text-center w-20"
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setTargetCount((prev) => Math.min(21, prev + 1))}
-                disabled={targetCount >= 21}
-                aria-label="Increase"
-              >
-                <ChevronUp className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              How many dinners do you need?
-            </p>
-          </div>
-
-          {/* Quick presets */}
-          <div className="flex gap-2">
-            {[5, 7, 10, 14].map((n) => (
-              <Button
-                key={n}
-                variant={targetCount === n ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setTargetCount(n)}
-              >
-                {n}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <Button
-          className="w-full"
-          onClick={handleSetTarget}
-          disabled={setTarget.isPending || requestMore.isPending}
-        >
-          {setTarget.isPending || requestMore.isPending ? (
-            <>
-              <Sparkles className="h-4 w-4 mr-2 animate-pulse" />
-              Getting suggestions...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Get Suggestions
-            </>
-          )}
-        </Button>
-      </div>
-    );
-  }
+  const canContinue = acceptedCount >= aiTargetCount;
 
   // Determine if we should show the loading spinner
-  const showLoadingSpinner = isInitialLoading || isRequestingAI || currentSuggestion?.status === 'pending';
+  const showLoadingSpinner = isSuggestionLoading || isRequestingAI || currentSuggestion?.status === 'pending';
 
   return (
     <div className="p-4 space-y-4 pb-40 md:pb-24">
-      <SuggestionProgress accepted={acceptedCount} target={targetCount} />
+      {/* Only show progress when we have suggestions to display */}
+      {pendingSuggestions.length > 0 && (
+        <SuggestionProgress accepted={acceptedCount} target={aiTargetCount} />
+      )}
 
       {/* Loading state */}
       {showLoadingSpinner && (
-        <div className="text-center py-8">
-          <LoadingSpinner />
-          <p className="text-sm text-muted-foreground mt-4">
-            Getting AI suggestions...
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            This may take a minute
-          </p>
+        <div className="text-center py-12">
+          <div className="flex items-center justify-center gap-3">
+            {activityType === 'thinking' && <Sparkles className="h-8 w-8 text-primary animate-bounce" />}
+            {activityType === 'querying' && <Flower2 className="h-8 w-8 text-primary/80 animate-pulse" />}
+            {activityType === 'results' && <Hexagon className="h-8 w-8 text-primary" />}
+            {!activityType && <Hexagon className="h-8 w-8 text-primary/60 animate-pulse" />}
+          </div>
+
+          {/* Progress bar */}
+          {displayProgress > 0 && (
+            <div className="mt-4 w-48 mx-auto">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-500 ease-out rounded-full"
+                  style={{ width: `${displayProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{Math.round(displayProgress)}%</p>
+            </div>
+          )}
+
+          <div className="mt-4 space-y-2">
+            {activityMessage ? (
+              <div className="bg-primary/10 rounded-lg px-4 py-3 inline-block max-w-xs mx-auto">
+                <p className="text-sm font-medium text-foreground">
+                  {activityMessage}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Getting the vibes ready...
+              </p>
+            )}
+            {!activityMessage && (
+              <p className="text-xs text-primary/70">
+                One sec, bestie!
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -284,27 +373,22 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
         </div>
       )}
 
-      {/* Pending suggestions list */}
+      {/* Pending suggestions list - show up to 3 cards for comparison */}
       {pendingSuggestions.length > 0 && (
         <div className="space-y-3">
-          {pendingSuggestions.map((suggestion) => {
-            // Find the actual index in the full suggestions array
-            const actualIndex = currentSuggestion!.suggestions!.findIndex(
-              (s) => s === suggestion
-            );
-            return (
-              <MealSuggestionCard
-                key={`${currentSuggestion!.id}-${actualIndex}`}
-                suggestionId={currentSuggestion!.id}
-                mealIndex={actualIndex}
-                meal={suggestion}
-                onAccept={handleAccept}
-                onReject={handleReject}
-                isAccepting={acceptSuggestion.isPending}
-                isRejecting={declineSuggestion.isPending}
-              />
-            );
-          })}
+          {pendingSuggestions.map((suggestion) => (
+            <MealSuggestionCard
+              key={`${currentSuggestion!.id}-${suggestion.originalIndex}`}
+              suggestionId={currentSuggestion!.id}
+              mealIndex={suggestion.originalIndex}
+              meal={suggestion}
+              onAccept={handleAccept}
+              onReject={handleReject}
+              isAccepting={acceptSuggestion.isPending}
+              isRejecting={declineSuggestion.isPending}
+              isBackfilling={isBackfilling}
+            />
+          ))}
         </div>
       )}
 
@@ -313,50 +397,76 @@ export function GetSuggestionsStep({ session, onStepComplete }: GetSuggestionsSt
         !showLoadingSpinner &&
         !canContinue && (
           <div className="text-center py-6">
-            <p className="text-muted-foreground mb-4">
-              Need more options? Request additional suggestions.
-            </p>
-            <Button
-              variant="outline"
-              onClick={() =>
-                requestMore.mutate({
-                  dateRangeStart: dateRange.start,
-                  dateRangeEnd: dateRange.end,
-                  mealTypes: ['dinner'],
-                })
-              }
-              disabled={requestMore.isPending}
-            >
-              {requestMore.isPending ? (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2 animate-pulse" />
-                  Getting more...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Get More Suggestions
-                </>
-              )}
-            </Button>
+            {isBackfilling ? (
+              // Show loading state when backfilling is in progress
+              <>
+                <LoadingSpinner />
+                <p className="text-sm text-muted-foreground mt-4">
+                  Getting more suggestions...
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  New options are on the way
+                </p>
+              </>
+            ) : (
+              // Show manual request button
+              <>
+                <p className="text-muted-foreground mb-4">
+                  Need more options? Request additional suggestions.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    requestMore.mutate({
+                      dateRangeStart: dateRange.start,
+                      dateRangeEnd: dateRange.end,
+                      mealTypes: ['dinner'],
+                    })
+                  }
+                  disabled={requestMore.isPending}
+                >
+                  {requestMore.isPending ? (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2 animate-pulse" />
+                      Getting more...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Get More Suggestions
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         )}
 
       {/* Continue Button - fixed at bottom, above mobile nav */}
       <div className="fixed bottom-16 md:bottom-0 left-0 right-0 bg-background border-t p-4 safe-area-pb z-40">
-        <Button
-          className="w-full"
-          disabled={!canContinue || completeStep.isPending}
-          onClick={() => completeStep.mutate()}
-        >
-          {canContinue
-            ? completeStep.isPending
-              ? 'Processing...'
-              : 'Continue to Shopping'
-            : `Accept ${targetCount - acceptedCount} more meal${
-                targetCount - acceptedCount !== 1 ? 's' : ''
-              }`}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleBack}
+            disabled={goBack.isPending || completeStep.isPending}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Back
+          </Button>
+          <Button
+            className="flex-1"
+            disabled={!canContinue || completeStep.isPending || goBack.isPending}
+            onClick={() => completeStep.mutate()}
+          >
+            {canContinue
+              ? completeStep.isPending
+                ? 'Processing...'
+                : 'Continue to Shopping'
+              : `Accept ${aiTargetCount - acceptedCount} more meal${
+                  aiTargetCount - acceptedCount !== 1 ? 's' : ''
+                }`}
+          </Button>
+        </div>
       </div>
     </div>
   );

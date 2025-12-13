@@ -85,7 +85,7 @@ export const step3Router = router({
         if (ing.optional) continue;
 
         const key = ing.name.toLowerCase().replace(/\s+/g, ' ').trim();
-        const scaledAmount = ing.amount * scaleFactor;
+        const scaledAmount = (ing.amount ?? 0) * scaleFactor;
 
         if (ingredientMap.has(key)) {
           const existing = ingredientMap.get(key)!;
@@ -177,12 +177,19 @@ export const step3Router = router({
 
       // Handle list action
       if (input.listAction === 'new') {
-        // Create new list
+        // Unset any existing default list
+        await ctx.db
+          .update(shoppingLists)
+          .set({ isDefault: false })
+          .where(eq(shoppingLists.isDefault, true));
+
+        // Create new list and set as default
         const [newList] = await ctx.db
           .insert(shoppingLists)
           .values({
             name: input.newListName || `Groceries - ${formatDateRange(new Date().toISOString().split('T')[0], '')}`,
             createdBy: ctx.userId,
+            isDefault: true,
           })
           .returning();
         targetListId = newList.id;
@@ -214,6 +221,7 @@ export const step3Router = router({
         quantity: number;
         unit: string | null;
         category: string;
+        fromMeals: string[];
       }>();
 
       for (const meal of meals) {
@@ -229,13 +237,18 @@ export const step3Router = router({
           if (!input.selectedIngredients.includes(key)) continue;
 
           if (ingredientMap.has(key)) {
-            ingredientMap.get(key)!.quantity += ing.amount * scaleFactor;
+            const existing = ingredientMap.get(key)!;
+            existing.quantity += (ing.amount ?? 0) * scaleFactor;
+            if (!existing.fromMeals.includes(meal.recipeName)) {
+              existing.fromMeals.push(meal.recipeName);
+            }
           } else {
             ingredientMap.set(key, {
               name: ing.name,
-              quantity: ing.amount * scaleFactor,
+              quantity: (ing.amount ?? 0) * scaleFactor,
               unit: ing.unit,
               category: ing.category || 'other',
+              fromMeals: [meal.recipeName],
             });
           }
         }
@@ -250,9 +263,14 @@ export const step3Router = router({
         category: (ing.category || 'other') as ShoppingCategoryId,
         sortOrder: index,
         addedBy: ctx.userId,
+        fromMeals: ing.fromMeals,
       }));
 
-      const insertedItems = await ctx.db.insert(shoppingItems).values(items).returning();
+      // Only insert if there are items (Drizzle doesn't allow empty inserts)
+      let insertedItems: typeof shoppingItems.$inferSelect[] = [];
+      if (items.length > 0) {
+        insertedItems = await ctx.db.insert(shoppingItems).values(items).returning();
+      }
 
       // Mark meals as shopping generated
       const mealIds = meals.map((m) => m.id);

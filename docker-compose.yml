@@ -1,3 +1,17 @@
+# =============================================================================
+# HoneyDo Docker Compose - Base Configuration
+# =============================================================================
+# This is the BASE configuration shared by both dev and prod.
+# DO NOT run this file directly! Use the environment-specific commands:
+#
+#   Development:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#   Production:   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Or use the npm scripts:
+#   pnpm docker:dev
+#   pnpm docker:prod
+# =============================================================================
+
 services:
   # HoneyDo API (Fastify + tRPC)
   api:
@@ -8,27 +22,23 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=production
       - API_HOST=0.0.0.0
       - API_PORT=3001
-      - DATABASE_URL=/app/apps/api/data/honeydo.db
-      - CORS_ORIGIN=http://localhost
       - HOME_ASSISTANT_URL=http://homeassistant:8123
-      # Secrets should be passed via .env file or Docker secrets
+      # Secrets passed via .env file (different per environment)
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
       - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
-    volumes:
-      - api_data:/app/apps/api/data
     depends_on:
       - homeassistant
     restart: unless-stopped
     networks:
       - honeydo-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      # Use 127.0.0.1 instead of localhost (Alpine resolves localhost to IPv6 first)
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -40,31 +50,27 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        - VITE_API_URL=http://localhost:3001
-        - VITE_WS_URL=ws://localhost:3001
+        # Don't set VITE_API_URL - let it auto-detect from hostname for Tailscale support
         - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
     container_name: honeydo-web
-    ports:
-      - "80:80"
+    # Ports defined in environment-specific compose files
     depends_on:
       - api
     restart: unless-stopped
     networks:
       - honeydo-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Home Assistant
+  # Home Assistant (shared between dev and prod on same machine)
   homeassistant:
     image: homeassistant/home-assistant:stable
     container_name: honeydo-homeassistant
     ports:
       - "8123:8123"
-    volumes:
-      - ha_config:/config
     environment:
       - TZ=${TZ:-America/Denver}
     restart: unless-stopped
@@ -75,9 +81,3 @@ services:
 networks:
   honeydo-network:
     driver: bridge
-
-volumes:
-  api_data:
-    name: honeydo-api-data
-  ha_config:
-    name: honeydo-ha-config

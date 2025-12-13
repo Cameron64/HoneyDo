@@ -76,6 +76,9 @@ export const shoppingItems = sqliteTable(
     // Google Keep sync
     googleKeepItemId: text('google_keep_item_id'),
 
+    // Recipe/meal tracking - which meals this ingredient is for
+    fromMeals: text('from_meals', { mode: 'json' }).$type<string[]>(),
+
     // Timestamps
     createdAt: text('created_at')
       .notNull()

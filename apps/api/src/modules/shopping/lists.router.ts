@@ -23,7 +23,7 @@ export const listsRouter = router({
   // Get default list (or create one if none exists)
   getDefault: protectedProcedure.query(async ({ ctx }) => {
     // Try to find existing default list
-    let defaultList = await ctx.db.query.shoppingLists.findFirst({
+    const defaultList = await ctx.db.query.shoppingLists.findFirst({
       where: and(
         eq(shoppingLists.isDefault, true),
         eq(shoppingLists.isArchived, false)

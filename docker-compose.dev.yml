@@ -1,26 +1,47 @@
-# Development overrides - use with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-# Or for dev-only mode: docker compose -f docker-compose.dev.yml up
+# =============================================================================
+# HoneyDo Docker Compose - Development Overrides
+# =============================================================================
+# Full stack in Docker: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Or: pnpm docker:dev
+#
+# For local dev (API + Web running locally, only HA in Docker):
+#   docker compose -f docker-compose.dev.yml up homeassistant -d
+#   pnpm dev
+# =============================================================================
 
 services:
-  # Home Assistant only - for local development
-  # Run API and Web locally with pnpm dev
-  homeassistant:
-    image: homeassistant/home-assistant:stable
-    container_name: honeydo-homeassistant-dev
-    ports:
-      - "8123:8123"
-    volumes:
-      - ha_config_dev:/config
+  api:
+    container_name: honeydo-api-dev
+    env_file:
+      - .env
     environment:
-      - TZ=${TZ:-America/Denver}
-    restart: unless-stopped
-    networks:
-      - honeydo-dev-network
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+      - DATABASE_URL=/app/apps/api/data/honeydo.db
+      # Permissive CORS for development
+      - CORS_ORIGIN=http://localhost:5173,http://localhost:8080,http://cams-work-comp.taila29c19.ts.net:5173,http://cams-work-comp.taila29c19.ts.net:8080
+      # Allow dev flags in development
+      - DEV_BYPASS_AUTH=${DEV_BYPASS_AUTH:-false}
+      - MOCK_MEAL_SUGGESTIONS=${MOCK_MEAL_SUGGESTIONS:-false}
+    volumes:
+      # Development data directory (isolated from prod)
+      - ./docker/data/dev/api:/app/apps/api/data
+      # Mount recipe history (shared for now)
+      - ./data/recipes:/app/data/recipes
+    labels:
+      - "com.honeydo.environment=development"
 
-networks:
-  honeydo-dev-network:
-    driver: bridge
+  web:
+    container_name: honeydo-web-dev
+    ports:
+      - "8080:80"
+    labels:
+      - "com.honeydo.environment=development"
 
-volumes:
-  ha_config_dev:
-    name: honeydo-ha-config-dev
+  homeassistant:
+    container_name: honeydo-homeassistant
+    volumes:
+      # Shared Home Assistant data
+      - ./docker/data/homeassistant:/config
+    labels:
+      - "com.honeydo.environment=development"

@@ -84,6 +84,7 @@ export type {
   SetScheduleInput,
   AggregatedIngredient,
   AddIngredientsToListInput,
+  MealSuggestion,
   SkillInput,
   SkillOutput,
   ExportedPreferences,
@@ -169,6 +170,7 @@ export interface ServerToClientEvents {
   'shopping:item:updated': (data: ShoppingItem) => void;
   'shopping:item:removed': (data: { id: string; listId: string }) => void;
   'shopping:item:checked': (data: { id: string; listId: string; checked: boolean; checkedBy: string | null; checkedAt: string | null }) => void;
+  'shopping:items:checked': (data: { ids: string[]; listId: string; checked: boolean; checkedBy: string | null; checkedAt: string | null }) => void;
   'shopping:items:cleared': (data: { listId: string; itemIds: string[] }) => void;
   'shopping:items:reordered': (data: { listId: string; itemIds: string[] }) => void;
 
@@ -197,6 +199,7 @@ export interface ServerToClientEvents {
   }) => void;
   'recipes:suggestions:more-received': (data: { suggestionId: string; newCount: number; totalHidden: number }) => void;
   'recipes:suggestions:more-error': (data: { suggestionId: string; error: string }) => void;
+  'recipes:suggestions:activity': (data: { message: string; type: 'thinking' | 'querying' | 'results'; progress: number }) => void;
   'recipes:meal:accepted': (data: { mealId: string; date: string; mealType: MealType }) => void;
   'recipes:meal:removed': (data: { date: string; mealType: MealType }) => void;
   'recipes:meal:completed': (data: { mealId: string; date: string; mealType: MealType; completed: boolean }) => void;

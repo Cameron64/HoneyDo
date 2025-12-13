@@ -30,7 +30,7 @@ export interface DietaryRestriction {
 
 export interface RecipeIngredient {
   name: string;
-  amount: number;
+  amount: number | null; // Allow null for "to taste" ingredients
   unit: string | null;
   category: string;
   preparation?: string;
@@ -275,6 +275,13 @@ export interface MealDispositionRecord {
   disposition: MealDispositionType;
 }
 
+export interface ManualPickEntry {
+  recipeId: string;
+  recipeName: string;
+  servings: number;
+  addedAt: string;
+}
+
 export const wizardSessions = sqliteTable('wizard_sessions', {
   id: text('id')
     .primaryKey()
@@ -289,8 +296,19 @@ export const wizardSessions = sqliteTable('wizard_sessions', {
   // Step 1 data: meal dispositions
   mealDispositions: text('meal_dispositions', { mode: 'json' }).$type<MealDispositionRecord[]>(),
 
-  // Step 2 data: suggestion tracking
-  targetMealCount: integer('target_meal_count'),
+  // Step 1 result: rollover count (becomes floor for total meal count)
+  rolloverCount: integer('rollover_count').default(0), // Meals rolled over from previous batch
+
+  // Step 2a data: meal counts planning
+  totalMealCount: integer('total_meal_count'), // Total meals for batch (must be >= rolloverCount)
+  manualPickCount: integer('manual_pick_count').default(0), // How many user picks manually (NEW picks, not rollovers)
+  // Derived: aiPickCount = totalMealCount - manualPickCount - rolloverCount
+
+  // Step 2b data: manual picks (from library or imported)
+  manualPickIds: text('manual_pick_ids', { mode: 'json' }).$type<ManualPickEntry[]>().default([]),
+
+  // Step 2c data: AI suggestion tracking (renamed for clarity)
+  targetMealCount: integer('target_meal_count'), // AI target (= totalMealCount - manualPickCount)
   acceptedMealIds: text('accepted_meal_ids', { mode: 'json' }).$type<string[]>(),
   currentSuggestionRequestId: text('current_suggestion_request_id'),
 
@@ -353,6 +371,9 @@ export const acceptedMeals = sqliteTable(
     // Rollover tracking
     isRollover: integer('is_rollover', { mode: 'boolean' }).notNull().default(false),
     rolloverFromBatchId: text('rollover_from_batch_id'),
+
+    // Manual pick tracking (user selected from library vs AI suggested)
+    isManualPick: integer('is_manual_pick', { mode: 'boolean' }).notNull().default(false),
 
     // Audible tracking
     isAudible: integer('is_audible', { mode: 'boolean' }).notNull().default(false),

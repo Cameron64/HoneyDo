@@ -3,8 +3,14 @@ import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { ConnectionStatus } from '@/components/common/ConnectionStatus';
 import { useAuth } from '@clerk/clerk-react';
 
+// Check if dev bypass auth is enabled
+const DEV_BYPASS_AUTH = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+
 export function Header() {
   const { isSignedIn } = useAuth();
+
+  // In dev bypass mode, treat as signed in for UI purposes
+  const showAuthenticatedUI = isSignedIn || DEV_BYPASS_AUTH;
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
@@ -14,7 +20,7 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isSignedIn && <ConnectionStatus />}
+          {showAuthenticatedUI && <ConnectionStatus />}
           <ThemeToggle />
           {isSignedIn && <UserButton />}
         </div>

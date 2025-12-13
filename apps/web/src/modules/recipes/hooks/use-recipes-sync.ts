@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useSocketEvent } from '@/services/socket/hooks';
+import { useActivityStore, type ActivityType } from '../stores/activity';
 
 interface WizardStepCompletedData {
   step: number;
@@ -14,14 +15,27 @@ interface WizardFinishedData {
 
 export function useRecipesSync() {
   const utils = trpc.useUtils();
+  const setActivity = useActivityStore((s) => s.setActivity);
+  const clearActivity = useActivityStore((s) => s.clearActivity);
+
+  // Handle Claude activity updates (thinking, querying, results)
+  const handleActivity = useCallback(
+    (data: { message: string; type: ActivityType; progress: number }) => {
+      console.log('[useRecipesSync] Activity event received:', data);
+      setActivity(data.message, data.type, data.progress);
+    },
+    [setActivity]
+  );
 
   // Handle new suggestions received
   const handleSuggestionsReceived = useCallback(
     ({ suggestionId }: { suggestionId: string }) => {
+      // Clear activity message when suggestions arrive
+      clearActivity();
       utils.recipes.suggestions.getCurrent.invalidate();
       utils.recipes.suggestions.getById.invalidate(suggestionId);
     },
-    [utils]
+    [utils, clearActivity]
   );
 
   // Handle suggestions updated (accept/reject)
@@ -36,8 +50,30 @@ export function useRecipesSync() {
   // Handle suggestions error
   const handleSuggestionsError = useCallback(
     ({ suggestionId }: { suggestionId: string; error: string }) => {
+      // Clear activity message on error
+      clearActivity();
       utils.recipes.suggestions.getCurrent.invalidate();
       utils.recipes.suggestions.getById.invalidate(suggestionId);
+    },
+    [utils, clearActivity]
+  );
+
+  // Handle more suggestions received (backfill completion)
+  const handleMoreSuggestionsReceived = useCallback(
+    ({ suggestionId }: { suggestionId: string; newCount: number; totalHidden: number }) => {
+      utils.recipes.suggestions.getCurrent.invalidate();
+      utils.recipes.suggestions.getById.invalidate(suggestionId);
+      utils.recipes.wizard.getCurrentSuggestion.invalidate();
+    },
+    [utils]
+  );
+
+  // Handle more suggestions error (backfill error)
+  const handleMoreSuggestionsError = useCallback(
+    ({ suggestionId }: { suggestionId: string; error: string }) => {
+      utils.recipes.suggestions.getCurrent.invalidate();
+      utils.recipes.suggestions.getById.invalidate(suggestionId);
+      utils.recipes.wizard.getCurrentSuggestion.invalidate();
     },
     [utils]
   );
@@ -118,9 +154,12 @@ export function useRecipesSync() {
   );
 
   // Subscribe to socket events
+  useSocketEvent('recipes:suggestions:activity', handleActivity);
   useSocketEvent('recipes:suggestions:received', handleSuggestionsReceived);
   useSocketEvent('recipes:suggestions:updated', handleSuggestionsUpdated);
   useSocketEvent('recipes:suggestions:error', handleSuggestionsError);
+  useSocketEvent('recipes:suggestions:more-received', handleMoreSuggestionsReceived);
+  useSocketEvent('recipes:suggestions:more-error', handleMoreSuggestionsError);
   useSocketEvent('recipes:meal:accepted', handleMealAccepted);
   useSocketEvent('recipes:meal:removed', handleMealRemoved);
   useSocketEvent('recipes:shopping:generated', handleShoppingGenerated);

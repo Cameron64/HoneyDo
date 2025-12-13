@@ -26,6 +26,8 @@ export interface BuildSkillInputOptions {
   suggestionsCount: number;
   /** Existing meals to avoid suggesting duplicates */
   existingMeals?: MealSuggestionItem[];
+  /** Recipe names to exclude (e.g., manually picked recipes) */
+  excludeRecipeNames?: string[];
 }
 
 /**
@@ -43,6 +45,7 @@ export async function buildSkillInput(
     mealTypes,
     suggestionsCount,
     existingMeals,
+    excludeRecipeNames,
   } = options;
 
   const [prefs, ingredients, notes, recentMealsData] = await Promise.all([
@@ -81,6 +84,14 @@ export async function buildSkillInput(
     notesArray.push({
       type: 'general' as const,
       content: `IMPORTANT: Avoid suggesting these recipes (already suggested): ${existingMeals.map((m) => m.recipe.name).join(', ')}`,
+    });
+  }
+
+  // Add manual pick exclusion note if we have recipes to exclude
+  if (excludeRecipeNames && excludeRecipeNames.length > 0) {
+    notesArray.push({
+      type: 'general' as const,
+      content: `IMPORTANT: Do NOT suggest these recipes (user has already manually selected them): ${excludeRecipeNames.join(', ')}`,
     });
   }
 

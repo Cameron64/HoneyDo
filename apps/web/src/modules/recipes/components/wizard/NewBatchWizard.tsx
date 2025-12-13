@@ -3,9 +3,12 @@ import { useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { WizardProgress } from './WizardProgress';
 import { ManageBatchStep } from './steps/ManageBatchStep';
+import { PlanBatchStep } from './steps/PlanBatchStep';
+import { ManualPicksStep } from './steps/ManualPicksStep';
 import { GetSuggestionsStep } from './steps/GetSuggestionsStep';
 import { ManageShoppingStep } from './steps/ManageShoppingStep';
 import { CompletionStep } from './steps/CompletionStep';
+import { useRecipesSync } from '../../hooks/use-recipes-sync';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import {
@@ -23,6 +26,9 @@ import { X, AlertCircle } from 'lucide-react';
 export function NewBatchWizard() {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+
+  // Set up real-time sync for recipe updates (activity messages, suggestions, etc.)
+  useRecipesSync();
 
   const [showAbandonDialog, setShowAbandonDialog] = useState(false);
 
@@ -96,7 +102,11 @@ export function NewBatchWizard() {
       case 1:
         return <ManageBatchStep session={session} onStepComplete={handleStepComplete} />;
       case 2:
-        return <GetSuggestionsStep session={session} onStepComplete={handleStepComplete} />;
+        // Step 2 has sub-steps:
+        // 2a: Plan batch (set total and manual pick counts)
+        // 2b: Manual picks (select from library)
+        // 2c: AI suggestions
+        return renderStep2();
       case 3:
         return <ManageShoppingStep session={session} onStepComplete={handleStepComplete} />;
       case 4:
@@ -104,6 +114,41 @@ export function NewBatchWizard() {
       default:
         return null;
     }
+  };
+
+  // Step 2 sub-step routing
+  const renderStep2 = () => {
+    // 2a: If no total meal count set yet, show PlanBatchStep
+    if (session.totalMealCount == null) {
+      return <PlanBatchStep session={session} onStepComplete={handleStepComplete} />;
+    }
+
+    // 2b: If manual picks are required, check if they've been completed
+    const manualPickCount = session.manualPickCount ?? 0;
+    const rolloverCount = session.rolloverCount ?? 0;
+    const acceptedMealIds = (session.acceptedMealIds ?? []) as string[];
+
+    // Manual picks are "committed" when completeManualPicks has been called,
+    // which populates acceptedMealIds with the created meal IDs
+    const manualPicksCommitted = manualPickCount > 0
+      ? acceptedMealIds.length >= manualPickCount
+      : true; // If no manual picks required, consider it committed
+
+    // Show ManualPicksStep if manual picks are required but not yet committed
+    if (manualPickCount > 0 && !manualPicksCommitted) {
+      return <ManualPicksStep onStepComplete={handleStepComplete} />;
+    }
+
+    // 2c: Manual picks complete (or 0 manual picks), proceed to AI suggestions
+    // AI count = total - manual picks - rollovers
+    const aiCount = session.totalMealCount - manualPickCount - rolloverCount;
+    if (aiCount <= 0) {
+      // All manual/rollover, this shouldn't happen as completeManualPicks should advance to step 3
+      // But handle it just in case
+      return <ManageShoppingStep session={session} onStepComplete={handleStepComplete} />;
+    }
+
+    return <GetSuggestionsStep session={session} onStepComplete={handleStepComplete} />;
   };
 
   return (

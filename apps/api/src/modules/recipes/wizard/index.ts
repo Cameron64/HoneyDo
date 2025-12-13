@@ -20,6 +20,7 @@ import { router } from '../../../trpc';
 import { sessionRouter } from './session.router';
 import { step1Router } from './step1.router';
 import { step2Router } from './step2.router';
+import { step2ManualRouter } from './step2-manual.router';
 import { step3Router } from './step3.router';
 import { step4Router } from './step4.router';
 import { batchesRouter } from './batches.router';
@@ -37,6 +38,7 @@ export const wizardRouter = router({
   start: sessionRouter.start,
   abandon: sessionRouter.abandon,
   getSession: sessionRouter.getSession,
+  goBack: sessionRouter.goBack,
 
   // ============================================
   // Step 1: Manage Current Batch (from step1.router.ts)
@@ -46,7 +48,20 @@ export const wizardRouter = router({
   completeStep1: step1Router.complete,
 
   // ============================================
-  // Step 2: Get New Suggestions (from step2.router.ts)
+  // Step 2a: Plan Batch (from step2-manual.router.ts)
+  // ============================================
+  setMealCounts: step2ManualRouter.setMealCounts,
+
+  // ============================================
+  // Step 2b: Manual Picks (from step2-manual.router.ts)
+  // ============================================
+  addManualPick: step2ManualRouter.addManualPick,
+  removeManualPick: step2ManualRouter.removeManualPick,
+  getManualPicks: step2ManualRouter.getManualPicks,
+  completeManualPicks: step2ManualRouter.completeManualPicks,
+
+  // ============================================
+  // Step 2c: AI Suggestions (from step2.router.ts)
   // ============================================
   getSuggestionProgress: step2Router.getSuggestionProgress,
   getCurrentSuggestion: step2Router.getCurrentSuggestion,
@@ -75,12 +90,16 @@ export const wizardRouter = router({
   // ============================================
   getActiveBatch: batchesRouter.getActive,
   getBatchHistory: batchesRouter.getHistory,
+  getBatchById: batchesRouter.getById,
+  deleteBatch: batchesRouter.delete,
+  deleteBatches: batchesRouter.deleteMany,
 });
 
 // Export sub-routers for potential future nested access
 export { sessionRouter } from './session.router';
 export { step1Router } from './step1.router';
 export { step2Router, step2QueriesRouter, step2RequestRouter, step2ActionsRouter } from './step2.router';
+export { step2ManualRouter } from './step2-manual.router';
 export { step3Router } from './step3.router';
 export { step4Router } from './step4.router';
 export { batchesRouter } from './batches.router';

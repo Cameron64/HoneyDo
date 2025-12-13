@@ -24,7 +24,7 @@ apps/web/src/
 ├── router.tsx              # TanStack Router configuration
 ├── components/
 │   ├── ui/                # shadcn/ui primitives
-│   ├── common/            # Shared components (LoadingSpinner, etc.)
+│   ├── common/            # Shared components (LoadingSpinner, DebugPanel, etc.)
 │   ├── layout/            # AppShell, Header, Sidebar, BottomNav
 │   ├── auth/              # ProtectedRoute, UserButton
 │   └── pwa/               # InstallPrompt, OfflineIndicator
@@ -78,6 +78,27 @@ const routeTree = rootRoute.addChildren([
 |--------|---------|----------|
 | `authLayoutRoute` | Sign in/up pages | No sidebar, minimal UI |
 | `appLayoutRoute` | All authenticated pages | AppShell with header, sidebar, bottom nav |
+| `wizardLayoutRoute` | Full-screen wizards | Header only, no nav, dedicated exit flow |
+
+**Wizard Layout**: Used for multi-step workflows like the batch wizard:
+```typescript
+// For full-screen wizards that need dedicated UX
+const wizardLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'wizard-layout',
+  component: () => (
+    <div className="h-screen flex flex-col">
+      <Outlet />
+    </div>
+  ),
+});
+
+const batchWizardRoute = createRoute({
+  getParentRoute: () => wizardLayoutRoute,
+  path: '/recipes/wizard',
+  component: NewBatchWizard,
+});
+```
 
 ### Navigation
 

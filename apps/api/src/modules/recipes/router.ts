@@ -5,6 +5,8 @@ import { mealsRouter } from './meals.router';
 import { shoppingRouter } from './shopping.router';
 import { scheduleRouter } from './schedule.router';
 import { wizardRouter } from './wizard';
+import { historyRouter } from './history.router';
+import { scrapeRouter } from './scrape.router';
 
 /**
  * Recipes Module Router
@@ -32,4 +34,6 @@ export const recipesRouter = router({
   shopping: shoppingRouter,
   schedule: scheduleRouter,
   wizard: wizardRouter,
+  history: historyRouter,
+  scrape: scrapeRouter,
 });

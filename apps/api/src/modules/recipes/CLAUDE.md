@@ -1,15 +1,17 @@
 # Recipes Module - Claude Code Instructions
 
-> AI-powered meal planning with Claude Code headless integration
+> AI-powered meal planning with Claude Session Service integration
 
 ## Overview
 
 The recipes module handles:
 - User meal preferences (cuisines, dietary restrictions, time/effort constraints)
-- AI-generated meal suggestions via Claude Code headless mode
+- AI-generated meal suggestions via persistent Claude session
+- Multi-step batch wizard for meal planning workflow
 - Accepted meals management (meal calendar)
 - Recipe-to-shopping-list ingredient integration
 - Scheduled weekly suggestion generation
+- Recipe history browsing
 
 ## Module Structure
 
@@ -17,26 +19,42 @@ The recipes module handles:
 apps/api/src/modules/recipes/
 ├── CLAUDE.md                  # This file
 ├── index.ts                   # Module exports
-├── router.ts                  # Main router (combines sub-routers)
+├── router.ts                  # Main router (7-router pattern)
 ├── preferences.router.ts      # Preference management
 ├── suggestions.router.ts      # AI suggestion workflow
 ├── meals.router.ts            # Accepted meals CRUD
 ├── shopping.router.ts         # Recipe-to-shopping integration
-└── schedule.router.ts         # Weekly schedule management
+├── schedule.router.ts         # Weekly schedule management
+├── history.router.ts          # Recipe/batch history queries
+└── wizard/                    # Multi-step batch wizard (12 files)
+    ├── index.ts               # Flat router combining all procedures
+    ├── session.router.ts      # start, abandon, getSession
+    ├── step1.router.ts        # getCurrentBatchMeals, setMealDispositions, complete
+    ├── step2.router.ts        # Combines step2 sub-routers
+    ├── step2-queries.router.ts    # getSuggestionProgress, getCurrentSuggestion, etc.
+    ├── step2-request.router.ts    # requestMoreSuggestions, fetchMoreHiddenSuggestions
+    ├── step2-actions.router.ts    # acceptSuggestion, declineSuggestion, complete
+    ├── step3.router.ts        # getShoppingPreview, getExistingLists, complete
+    ├── step4.router.ts        # getCompletionSummary, finish
+    ├── batches.router.ts      # getActive, getHistory, getById
+    ├── helpers.ts             # Shared helper functions
+    └── step2-helpers.ts       # Step 2 specific helpers
 ```
 
 ## Router Pattern
 
-This module uses a **5-router pattern**:
+This module uses a **7-router pattern**:
 
 ```typescript
 // router.ts
 export const recipesRouter = router({
   preferences: preferencesRouter,  // User preferences
-  suggestions: suggestionsRouter,  // AI suggestions
+  suggestions: suggestionsRouter,  // AI suggestions (legacy)
   meals: mealsRouter,              // Accepted meals
   shopping: shoppingRouter,        // Ingredient aggregation
   schedule: scheduleRouter,        // Weekly scheduling
+  wizard: wizardRouter,            // Multi-step batch wizard
+  history: historyRouter,          // Recipe/batch history
 });
 
 // Usage:
@@ -45,6 +63,8 @@ trpc.recipes.suggestions.request.useMutation()
 trpc.recipes.meals.getRange.useQuery({ start, end })
 trpc.recipes.shopping.getIngredients.useQuery({ start, end })
 trpc.recipes.schedule.set.useMutation()
+trpc.recipes.wizard.start.useQuery()
+trpc.recipes.history.getRecipes.useQuery()
 ```
 
 ## Database Schema
@@ -122,20 +142,127 @@ Located in `apps/api/src/db/schema/recipes.ts`:
 | `enable` | Resume automatic suggestions |
 | `triggerNow` | Manual trigger with schedule's daysAhead |
 
-## Claude Code Integration
+## Wizard System
 
-The module uses Claude Code in headless mode (`-p` flag) to generate meal suggestions:
+The wizard provides a multi-step workflow for meal batch planning:
+
+### Wizard Steps
+
+| Step | Purpose | Key Procedures |
+|------|---------|----------------|
+| **1. Manage Batch** | Handle leftover meals from previous batch | `getCurrentBatchMeals`, `setMealDispositions`, `completeStep1` |
+| **2. Get Suggestions** | Request AI suggestions, review one-by-one | `requestMoreSuggestions`, `acceptSuggestion`, `declineSuggestion`, `completeStep2` |
+| **3. Manage Shopping** | Select ingredients, add to list | `getShoppingPreview`, `getExistingLists`, `completeStep3` |
+| **4. Complete** | Summary and finish | `getCompletionSummary`, `finishWizard` |
+
+### Wizard Procedures
+
+```typescript
+// Session Management
+trpc.recipes.wizard.start.useQuery()           // Start or resume wizard session
+trpc.recipes.wizard.abandon.useMutation()      // Cancel wizard
+trpc.recipes.wizard.getSession.useQuery()      // Get current session state
+
+// Step 1: Manage Batch
+trpc.recipes.wizard.getCurrentBatchMeals.useQuery()       // Get meals from previous batch
+trpc.recipes.wizard.setMealDispositions.useMutation()     // Set rollover/complete/discard
+trpc.recipes.wizard.completeStep1.useMutation()           // Move to step 2
+
+// Step 2: Get Suggestions
+trpc.recipes.wizard.getSuggestionProgress.useQuery()      // { accepted, target, hidden }
+trpc.recipes.wizard.getCurrentSuggestion.useQuery()       // Get next pending suggestion
+trpc.recipes.wizard.setTargetCount.useMutation()          // Adjust meal count target
+trpc.recipes.wizard.requestMoreSuggestions.useMutation()  // Request AI suggestions
+trpc.recipes.wizard.fetchMoreHiddenSuggestions.useMutation() // Get from hidden pool
+trpc.recipes.wizard.acceptSuggestion.useMutation()        // Accept current suggestion
+trpc.recipes.wizard.declineSuggestion.useMutation()       // Decline current suggestion
+trpc.recipes.wizard.completeStep2.useMutation()           // Move to step 3
+
+// Step 3: Manage Shopping
+trpc.recipes.wizard.getShoppingPreview.useQuery()         // Aggregated ingredients
+trpc.recipes.wizard.getExistingLists.useQuery()           // Shopping lists to add to
+trpc.recipes.wizard.completeStep3.useMutation()           // Move to step 4
+
+// Step 4: Complete
+trpc.recipes.wizard.getCompletionSummary.useQuery()       // Summary stats
+trpc.recipes.wizard.finishWizard.useMutation()            // Complete and cleanup
+
+// Batch Management
+trpc.recipes.wizard.getActiveBatch.useQuery()             // Current active batch
+trpc.recipes.wizard.getBatchHistory.useQuery()            // Past batches
+trpc.recipes.wizard.getBatchById.useQuery({ id })         // Specific batch
+```
+
+### Wizard Session State
+
+```typescript
+interface WizardSession {
+  id: string;
+  batchId: string;
+  currentStep: 1 | 2 | 3 | 4;
+  step1Complete: boolean;
+  step2Complete: boolean;
+  step3Complete: boolean;
+  targetMealCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### Hidden Suggestion Pool
+
+Step 2 maintains a "hidden pool" of suggestions:
+- AI generates more suggestions than needed
+- User sees one at a time
+- Declined suggestions are replaced from the pool
+- Pool can be refilled via `fetchMoreHiddenSuggestions`
+
+## Claude Session Integration
+
+The module uses the persistent Claude Session Service for AI suggestions:
 
 ```typescript
 // apps/api/src/services/meal-suggestions.ts
+import { getClaudeSession } from '../../services/claude-session';
+
+const session = getClaudeSession();
+
+// Method 1: Persistent session (recommended, faster)
+const result = await session.runQuery({
+  prompt: buildPrompt(preferences, dateRange),
+  systemPrompt: mealSuggestionsSystemPrompt,
+  onMessage: (message) => {
+    // Stream activity to frontend
+    if (message.type === 'assistant') {
+      activityCallback(extractActivityMessage(message));
+    }
+  },
+});
+
+// Method 2: CLI spawn (fallback)
 const proc = spawn('claude', [
   '-p',                          // Print mode (non-interactive)
-  '--output-format', 'json',     // Structured response
-  '--allowedTools', 'Read',      // Only read history.json
+  '--output-format', 'stream-json',
+  '--allowedTools', 'Read',
   '--max-turns', '3',
-  '--append-system-prompt', systemPrompt,
-  userPrompt,
 ]);
+```
+
+### Activity Streaming
+
+The wizard streams real-time progress messages to the frontend:
+
+```typescript
+// During AI suggestion generation
+socketEmitter.toUser(userId, 'recipes:activity', {
+  message: 'bestie is checking your recipe library...',
+  progress: 0.3,
+});
+
+// Message categories (420+ variations!):
+// - Thinking messages ("contemplating your vibe...")
+// - Querying messages ("diving into the recipe archive...")
+// - Finalizing messages ("putting the finishing touches...")
 ```
 
 ### System Prompt
@@ -190,6 +317,15 @@ Features:
 - Tracks which meals contributed each ingredient
 - Handles unit mismatches with `additionalAmounts`
 
+### History Router
+
+| Procedure | Purpose |
+|-----------|---------|
+| `getRecipes` | Get all recipes from history.json |
+| `searchRecipes` | Search recipes by name/cuisine |
+| `getBatches` | Get past batch history |
+| `getBatchDetail` | Get full batch with meals |
+
 ## WebSocket Events
 
 | Event | Direction | Payload |
@@ -201,6 +337,8 @@ Features:
 | `recipes:meal:removed` | Server→Client | `{ date, mealType }` |
 | `recipes:meal:completed` | Server→Client | `{ mealId, date, mealType, completed }` |
 | `recipes:shopping:generated` | Server→Client | `{ listId, itemCount }` |
+| `recipes:activity` | Server→Client | `{ message, progress? }` |
+| `recipes:wizard:step-complete` | Server→Client | `{ step, sessionId }` |
 
 ## Recipe History
 

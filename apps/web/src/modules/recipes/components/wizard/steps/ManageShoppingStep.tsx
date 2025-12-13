@@ -23,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CheckSquare, Square, AlertCircle, ShoppingCart, Plus } from 'lucide-react';
+import { CheckSquare, Square, AlertCircle, ShoppingCart, Plus, ChevronLeft } from 'lucide-react';
 import type { WizardSession } from '@honeydo/shared';
 
 interface ManageShoppingStepProps {
@@ -51,6 +51,19 @@ export function ManageShoppingStep({ onStepComplete }: ManageShoppingStepProps) 
       onStepComplete();
     },
   });
+
+  // Go back to previous step (step 2c - AI suggestions)
+  const goBack = trpc.recipes.wizard.goBack.useMutation({
+    onSuccess: () => {
+      utils.recipes.wizard.start.invalidate();
+      utils.recipes.wizard.getSession.invalidate();
+      onStepComplete(); // Triggers refetch in parent
+    },
+  });
+
+  const handleBack = () => {
+    goBack.mutate({ target: 'step2c' });
+  };
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [listAction, setListAction] = useState<ListAction>('new');
@@ -134,7 +147,7 @@ export function ManageShoppingStep({ onStepComplete }: ManageShoppingStepProps) 
   // No ingredients (e.g., only rollover meals)
   if (!ingredients || ingredients.length === 0) {
     return (
-      <div className="p-4 space-y-6">
+      <div className="p-4 space-y-6 pb-40 md:pb-24">
         <div className="text-center py-8">
           <div className="p-4 bg-muted rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
             <ShoppingCart className="h-8 w-8 text-muted-foreground" />
@@ -143,13 +156,30 @@ export function ManageShoppingStep({ onStepComplete }: ManageShoppingStepProps) 
           <p className="text-sm text-muted-foreground mb-6">
             All your meals are rollovers, so you've already shopped for them!
           </p>
-          <Button onClick={() => completeShopping.mutate({
-            selectedIngredients: [],
-            listAction: 'new',
-            newListName: 'Empty batch',
-          })} disabled={completeShopping.isPending}>
-            {completeShopping.isPending ? 'Processing...' : 'Continue'}
-          </Button>
+        </div>
+        {/* Fixed bottom buttons */}
+        <div className="fixed bottom-16 md:bottom-0 left-0 right-0 bg-background border-t p-4 safe-area-pb z-40">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleBack}
+              disabled={goBack.isPending || completeShopping.isPending}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => completeShopping.mutate({
+                selectedIngredients: [],
+                listAction: 'new',
+                newListName: 'Empty batch',
+              })}
+              disabled={completeShopping.isPending || goBack.isPending}
+            >
+              {completeShopping.isPending ? 'Processing...' : 'Continue'}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -292,25 +322,36 @@ export function ManageShoppingStep({ onStepComplete }: ManageShoppingStepProps) 
 
       {/* Continue Button - fixed at bottom, above mobile nav */}
       <div className="fixed bottom-16 md:bottom-0 left-0 right-0 bg-background border-t p-4 safe-area-pb z-40">
-        <Button
-          className="w-full"
-          disabled={
-            selected.size === 0 ||
-            completeShopping.isPending ||
-            (listAction === 'new' && !newListName.trim()) ||
-            ((listAction === 'append' || listAction === 'replace') && !targetListId)
-          }
-          onClick={handleComplete}
-        >
-          {completeShopping.isPending ? (
-            'Creating list...'
-          ) : (
-            <>
-              <ShoppingCart className="h-4 w-4 mr-2" />
-              Create Shopping List ({selected.size} items)
-            </>
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleBack}
+            disabled={goBack.isPending || completeShopping.isPending}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Back
+          </Button>
+          <Button
+            className="flex-1"
+            disabled={
+              selected.size === 0 ||
+              completeShopping.isPending ||
+              goBack.isPending ||
+              (listAction === 'new' && !newListName.trim()) ||
+              ((listAction === 'append' || listAction === 'replace') && !targetListId)
+            }
+            onClick={handleComplete}
+          >
+            {completeShopping.isPending ? (
+              'Creating list...'
+            ) : (
+              <>
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Create Shopping List ({selected.size} items)
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Replace Confirmation Dialog */}

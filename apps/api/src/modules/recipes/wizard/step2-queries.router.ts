@@ -31,7 +31,22 @@ export const step2QueriesRouter = router({
     }
 
     const acceptedMealIds = (session.acceptedMealIds || []) as string[];
-    const targetCount = session.targetMealCount || 7;
+    const manualPickIds = (session.manualPickIds || []) as Array<{ recipeId: string }>;
+
+    // Calculate AI target count:
+    // aiTarget = totalMealCount - manualPickCount - rolloverCount
+    // Or fall back to targetMealCount for legacy sessions
+    const totalMealCount = session.totalMealCount;
+    const manualPickCount = session.manualPickCount ?? 0;
+    const rolloverCount = session.rolloverCount ?? 0;
+
+    const aiTargetCount = totalMealCount != null
+      ? totalMealCount - manualPickCount - rolloverCount
+      : (session.targetMealCount || 7);
+
+    // AI accepted count = total accepted - manual picks already processed
+    // acceptedMealIds contains both manual pick meals and AI accepted meals
+    const aiAcceptedCount = Math.max(0, acceptedMealIds.length - manualPickIds.length);
 
     // Get pending suggestion count
     let pendingSuggestionCount = 0;
@@ -46,8 +61,10 @@ export const step2QueriesRouter = router({
     }
 
     return {
-      targetCount,
-      acceptedCount: acceptedMealIds.length,
+      targetCount: aiTargetCount,
+      acceptedCount: aiAcceptedCount,
+      totalAcceptedCount: acceptedMealIds.length,
+      manualPickCount: manualPickIds.length,
       pendingSuggestionCount,
     };
   }),

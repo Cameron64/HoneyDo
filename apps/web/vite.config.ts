@@ -2,6 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import fs from 'fs';
+
+// Tailscale HTTPS certs (optional - for PWA support over Tailscale)
+const certPath = path.resolve(__dirname, '../../certs/cams-work-comp.taila29c19.ts.net.crt');
+const keyPath = path.resolve(__dirname, '../../certs/cams-work-comp.taila29c19.ts.net.key');
+const hasCerts = fs.existsSync(certPath) && fs.existsSync(keyPath);
 
 export default defineConfig({
   plugins: [
@@ -100,7 +106,8 @@ export default defineConfig({
         ],
       },
       devOptions: {
-        enabled: false,
+        enabled: true, // Enable PWA in dev for Tailscale testing
+        type: 'module',
       },
     }),
   ],
@@ -112,7 +119,17 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Bind to all interfaces for LAN access
     port: 5173,
-    allowedHosts: process.env.VITE_ALLOWED_HOSTS?.split(',') || ['localhost'],
+    https: hasCerts
+      ? {
+          cert: fs.readFileSync(certPath),
+          key: fs.readFileSync(keyPath),
+        }
+      : undefined,
+    allowedHosts: [
+      'localhost',
+      '.ts.net', // Allow all Tailscale hostnames
+      ...(process.env.VITE_ALLOWED_HOSTS?.split(',') || []),
+    ],
     headers: {
       // Prevent caching of JS files during development
       'Cache-Control': 'no-store',

@@ -1,6 +1,7 @@
-import { Component, type ReactNode } from 'react';
+import { Component, type ReactNode, type ErrorInfo } from 'react';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle } from 'lucide-react';
+import { errorService } from '@/services/error-service';
 
 interface Props {
   children: ReactNode;
@@ -20,6 +21,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Log to centralized error service
+    errorService.logReactError(error, { componentStack: errorInfo.componentStack ?? undefined });
   }
 
   render() {

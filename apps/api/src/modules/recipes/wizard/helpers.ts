@@ -36,7 +36,7 @@ export async function getOrCreateWizardSession(
   userId: string
 ): Promise<WizardSessionRow> {
   // Check for existing session
-  let session = await db.query.wizardSessions.findFirst({
+  const session = await db.query.wizardSessions.findFirst({
     where: eq(wizardSessions.userId, userId),
   });
 

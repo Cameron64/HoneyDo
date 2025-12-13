@@ -38,11 +38,25 @@ export const dietaryRestrictionSchema = z.object({
 
 export const recipeIngredientSchema = z.object({
   name: z.string().min(1),
-  amount: z.number().nonnegative(),
+  amount: z.number().nonnegative().nullable(), // Allow null for "to taste" ingredients
   unit: z.string().nullable(),
   category: z.string(),
   preparation: z.string().optional(),
   optional: z.boolean().optional(),
+});
+
+// Nutrition/macros information (per serving)
+export const nutritionSchema = z.object({
+  calories: z.number().nonnegative().nullable(), // kcal
+  protein: z.number().nonnegative().nullable(), // grams
+  carbohydrates: z.number().nonnegative().nullable(), // grams
+  fat: z.number().nonnegative().nullable(), // grams
+  fiber: z.number().nonnegative().nullable().optional(), // grams
+  sugar: z.number().nonnegative().nullable().optional(), // grams
+  sodium: z.number().nonnegative().nullable().optional(), // mg
+  saturatedFat: z.number().nonnegative().nullable().optional(), // grams
+  cholesterol: z.number().nonnegative().nullable().optional(), // mg
+  servingSize: z.string().nullable().optional(), // e.g., "1/8 of the recipe"
 });
 
 export const recipeDataSchema = z.object({
@@ -63,6 +77,7 @@ export const recipeDataSchema = z.object({
   ingredients: z.array(recipeIngredientSchema),
   instructions: z.array(z.string()),
   tags: z.array(z.string()).optional(),
+  nutrition: nutritionSchema.nullable().optional(), // Per-serving nutrition data
 });
 
 // ============================================
@@ -187,6 +202,12 @@ export const setServingsSchema = z.object({
   servings: z.number().min(1).max(20),
 });
 
+export const fetchMoreSuggestionsSchema = z.object({
+  suggestionId: z.string(),
+  mealIndex: z.number().nonnegative(), // Index of the meal to get alternatives for
+  count: z.number().min(1).max(5).default(3), // How many alternatives to fetch
+});
+
 // ============================================
 // Accepted Meals Schemas
 // ============================================
@@ -258,6 +279,7 @@ export const addIngredientsToListSchema = z.object({
     unit: z.string().optional(),
     category: z.string().optional(),
     note: z.string().optional(),
+    fromMeals: z.array(z.string()).optional(),
   })),
   mealIds: z.array(z.string()),
 });
@@ -306,12 +328,14 @@ export const skillInputSchema = z.object({
   }),
 });
 
+export const mealSuggestionSchema = z.object({
+  date: z.string(),
+  mealType: z.string(),
+  recipe: recipeDataSchema,
+});
+
 export const skillOutputSchema = z.object({
-  suggestions: z.array(z.object({
-    date: z.string(),
-    mealType: z.string(),
-    recipe: recipeDataSchema,
-  })),
+  suggestions: z.array(mealSuggestionSchema),
   reasoning: z.string(),
 });
 
@@ -376,10 +400,26 @@ export const mealDispositionRecordSchema = z.object({
   disposition: mealDispositionSchema,
 });
 
+// Manual pick entry (user selected from library or imported)
+export const manualPickEntrySchema = z.object({
+  recipeId: z.string(),
+  recipeName: z.string(),
+  servings: z.number().int().min(1).max(20),
+  addedAt: z.string(),
+});
+
 export const wizardSessionSchema = z.object({
   id: z.string(),
   currentStep: z.number().min(1).max(4),
   mealDispositions: z.array(mealDispositionRecordSchema).nullable(),
+  // Step 1 result: rollover count (floor for total meal count)
+  rolloverCount: z.number().default(0),
+  // Step 2a: Meal counts planning
+  totalMealCount: z.number().nullable(),
+  manualPickCount: z.number().default(0),
+  // Step 2b: Manual picks
+  manualPickIds: z.array(manualPickEntrySchema).nullable(),
+  // Step 2c: AI suggestions (targetMealCount = aiCount)
   targetMealCount: z.number().nullable(),
   acceptedMealIds: z.array(z.string()).nullable(),
   newBatchId: z.string().nullable(),
@@ -392,6 +432,25 @@ export const setMealDispositionsSchema = z.object({
 
 export const setTargetCountSchema = z.object({
   count: z.number().min(1).max(21),
+});
+
+// Step 2a: Set meal counts (total and manual pick breakdown)
+export const setMealCountsSchema = z.object({
+  total: z.number().int().min(1).max(21),
+  manualPicks: z.number().int().min(0).max(21),
+}).refine(data => data.manualPicks <= data.total, {
+  message: "Manual picks cannot exceed total meals",
+});
+
+// Step 2b: Add a manual pick from library
+export const addManualPickSchema = z.object({
+  recipeId: z.string(),
+  servings: z.number().int().min(1).max(20).default(4),
+});
+
+// Step 2b: Remove a manual pick
+export const removeManualPickSchema = z.object({
+  recipeId: z.string(),
 });
 
 export const completeShoppingSchema = z.object({
@@ -434,6 +493,67 @@ export const wizardCompletionSummarySchema = z.object({
 });
 
 // ============================================
+// Recipe Scraping Schemas
+// ============================================
+
+export const scrapeUrlSchema = z.object({
+  url: z.string().url('Please enter a valid URL'),
+});
+
+export const scrapedIngredientSchema = z.object({
+  name: z.string(),
+  amount: z.number().nullable(),
+  unit: z.string().nullable(),
+  category: z.string(),
+});
+
+export const scrapedRecipeSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  sourceUrl: z.string().url(),
+  source: z.string(), // Extracted domain name
+  prepTimeMinutes: z.number().nullable(),
+  cookTimeMinutes: z.number().nullable(),
+  totalTimeMinutes: z.number().nullable(),
+  defaultServings: z.number().nullable(),
+  ingredients: z.array(scrapedIngredientSchema),
+  instructions: z.array(z.string()),
+  image: z.string().nullable(),
+});
+
+export const saveScrapedRecipeSchema = z.object({
+  // Required fields
+  name: z.string().min(1, 'Recipe name is required'),
+  source: z.string().min(1, 'Source is required'),
+  sourceUrl: z.string().url().nullable(),
+  cuisine: z.string().min(1, 'Cuisine is required'),
+
+  // Time and effort
+  prepTimeMinutes: z.number().nonnegative(),
+  cookTimeMinutes: z.number().nonnegative(),
+  totalTimeMinutes: z.number().nonnegative(),
+  effort: z.number().min(1).max(5),
+
+  // Servings
+  defaultServings: z.number().positive(),
+  servingsUnit: z.string().default('servings'),
+
+  // Recipe content
+  ingredients: z.array(scrapedIngredientSchema).min(1, 'At least one ingredient is required'),
+  instructions: z.array(z.string()),
+
+  // Optional metadata
+  description: z.string().nullable().optional(),
+  diet: z.enum(['vegan', 'vegetarian', 'pescatarian', 'omnivore']).nullable().optional(),
+  proteinSources: z.array(z.string()).optional(),
+  allergens: z.array(z.string()).optional(),
+  macroProfile: z.enum(['protein-heavy', 'carb-heavy', 'balanced', 'light']).nullable().optional(),
+  mealTypes: z.array(mealTypeSchema).default(['dinner']),
+  seasonality: z.array(z.string()).nullable().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+// ============================================
 // Inferred Types
 // ============================================
 
@@ -465,6 +585,7 @@ export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 
 // Recipe types
 export type RecipeIngredient = z.infer<typeof recipeIngredientSchema>;
+export type Nutrition = z.infer<typeof nutritionSchema>;
 export type RecipeData = z.infer<typeof recipeDataSchema>;
 
 // Suggestion types
@@ -474,6 +595,7 @@ export type RequestSuggestionsInput = z.infer<typeof requestSuggestionsSchema>;
 export type AcceptMealInput = z.infer<typeof acceptMealSchema>;
 export type RejectMealInput = z.infer<typeof rejectMealSchema>;
 export type SetServingsInput = z.infer<typeof setServingsSchema>;
+export type FetchMoreSuggestionsInput = z.infer<typeof fetchMoreSuggestionsSchema>;
 
 // Accepted meal types
 export type AcceptedMeal = z.infer<typeof acceptedMealSchema>;
@@ -488,6 +610,7 @@ export type AggregatedIngredient = z.infer<typeof aggregatedIngredientSchema>;
 export type AddIngredientsToListInput = z.infer<typeof addIngredientsToListSchema>;
 
 // Skill integration types
+export type MealSuggestion = z.infer<typeof mealSuggestionSchema>;
 export type SkillInput = z.infer<typeof skillInputSchema>;
 export type SkillOutput = z.infer<typeof skillOutputSchema>;
 
@@ -501,11 +624,21 @@ export type Batch = z.infer<typeof batchSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 
 // Wizard types
+export type ManualPickEntry = z.infer<typeof manualPickEntrySchema>;
 export type MealDispositionRecord = z.infer<typeof mealDispositionRecordSchema>;
 export type WizardSession = z.infer<typeof wizardSessionSchema>;
 export type SetMealDispositionsInput = z.infer<typeof setMealDispositionsSchema>;
 export type SetTargetCountInput = z.infer<typeof setTargetCountSchema>;
+export type SetMealCountsInput = z.infer<typeof setMealCountsSchema>;
+export type AddManualPickInput = z.infer<typeof addManualPickSchema>;
+export type RemoveManualPickInput = z.infer<typeof removeManualPickSchema>;
 export type CompleteShoppingInput = z.infer<typeof completeShoppingSchema>;
 export type WizardMeal = z.infer<typeof wizardMealSchema>;
 export type WizardProgress = z.infer<typeof wizardProgressSchema>;
 export type WizardCompletionSummary = z.infer<typeof wizardCompletionSummarySchema>;
+
+// Scraping types
+export type ScrapeUrlInput = z.infer<typeof scrapeUrlSchema>;
+export type ScrapedIngredient = z.infer<typeof scrapedIngredientSchema>;
+export type ScrapedRecipe = z.infer<typeof scrapedRecipeSchema>;
+export type SaveScrapedRecipeInput = z.infer<typeof saveScrapedRecipeSchema>;

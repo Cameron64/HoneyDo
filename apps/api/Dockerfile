@@ -1,32 +1,5 @@
-# Build stage
-FROM node:20-alpine AS builder
-
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@9.14.2 --activate
-
-WORKDIR /app
-
-# Copy workspace config files
-COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml ./
-COPY package.json ./
-COPY tsconfig.base.json ./
-
-# Copy packages
-COPY packages/ ./packages/
-
-# Copy api app
-COPY apps/api/ ./apps/api/
-
-# Install dependencies
-RUN pnpm install --frozen-lockfile
-
-# Build shared package first, then api
-RUN pnpm --filter @honeydo/shared build
-RUN pnpm --filter @honeydo/api build
-
-# Production stage
-FROM node:20-alpine AS runner
+# Production stage - run TypeScript directly with tsx
+FROM node:20-alpine
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@9.14.2 --activate
@@ -41,16 +14,19 @@ RUN adduser --system --uid 1001 honeydo
 COPY pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml ./
 COPY package.json ./
+COPY tsconfig.base.json ./
 
-# Copy packages (needed for workspace resolution)
+# Copy packages
 COPY packages/ ./packages/
 
-# Copy built api
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY apps/api/package.json ./apps/api/
+# Copy api source
+COPY apps/api/ ./apps/api/
 
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
+# Copy MCP servers (needed for meal-suggestions service)
+COPY apps/mcp-servers/ ./apps/mcp-servers/
+
+# Install all dependencies (tsx is a dev dependency)
+RUN pnpm install --frozen-lockfile
 
 # Create data directory for SQLite
 RUN mkdir -p /app/apps/api/data && chown -R honeydo:nodejs /app/apps/api/data
@@ -65,4 +41,4 @@ ENV NODE_ENV=production
 ENV API_HOST=0.0.0.0
 ENV API_PORT=3001
 
-CMD ["node", "dist/server.js"]
+CMD ["pnpm", "exec", "tsx", "src/server.ts"]

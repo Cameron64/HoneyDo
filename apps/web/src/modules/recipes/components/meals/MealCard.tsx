@@ -1,11 +1,22 @@
 import { useState } from 'react';
-import { Clock, ShoppingCart, Check, RefreshCw } from 'lucide-react';
+import { Clock, ShoppingCart, Check, RefreshCw, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc';
 import { useSwipeGesture } from '@/hooks/use-swipe-gesture';
+import { useLongPress } from '@/hooks/use-long-press';
 import type { AcceptedMeal } from '@honeydo/shared';
 import { AudibleDialog } from './AudibleDialog';
 
@@ -17,16 +28,53 @@ interface MealCardProps {
 export function MealCard({ meal, onClick }: MealCardProps) {
   const utils = trpc.useUtils();
   const [audibleDialogOpen, setAudibleDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const markCompletedMutation = trpc.recipes.meals.markCompleted.useMutation({
+  const removeMealMutation = trpc.recipes.meals.remove.useMutation({
     onMutate: async () => {
-      // Optimistic update - cancel in-flight queries
       await utils.recipes.meals.getRange.cancel();
       await utils.recipes.meals.getUpcoming.cancel();
     },
     onSuccess: () => {
       utils.recipes.meals.getRange.invalidate();
       utils.recipes.meals.getUpcoming.invalidate();
+      utils.recipes.meals.getCurrentBatch.invalidate();
+    },
+  });
+
+  const markCompletedMutation = trpc.recipes.meals.markCompleted.useMutation({
+    onMutate: async ({ mealId, completed }) => {
+      // Cancel in-flight queries
+      await utils.recipes.meals.getRange.cancel();
+      await utils.recipes.meals.getUpcoming.cancel();
+      await utils.recipes.meals.getCurrentBatch.cancel();
+
+      // Snapshot previous values
+      const prevBatch = utils.recipes.meals.getCurrentBatch.getData();
+
+      // Optimistic update for current batch
+      utils.recipes.meals.getCurrentBatch.setData(undefined, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          meals: old.meals.map((m) =>
+            m.id === mealId ? { ...m, completed } : m
+          ),
+        };
+      });
+
+      return { prevBatch };
+    },
+    onError: (_err, _vars, context) => {
+      // Rollback on error
+      if (context?.prevBatch) {
+        utils.recipes.meals.getCurrentBatch.setData(undefined, context.prevBatch);
+      }
+    },
+    onSettled: () => {
+      utils.recipes.meals.getRange.invalidate();
+      utils.recipes.meals.getUpcoming.invalidate();
+      utils.recipes.meals.getCurrentBatch.invalidate();
     },
   });
 
@@ -51,11 +99,50 @@ export function MealCard({ meal, onClick }: MealCardProps) {
     setAudibleDialogOpen(true);
   };
 
-  const { handlers, swipeState, revealPercent, isThresholdMet } = useSwipeGesture({
+  const { handlers: swipeHandlers, swipeState, revealPercent, isThresholdMet } = useSwipeGesture({
     onSwipeRight: handleSwipeRight,
     onSwipeLeft: handleSwipeLeft,
     threshold: 80,
   });
+
+  const handleLongPress = () => {
+    setDeleteDialogOpen(true);
+  };
+
+  const { handlers: longPressHandlers } = useLongPress({
+    onLongPress: handleLongPress,
+    threshold: 600, // 600ms for long press
+  });
+
+  const handleConfirmDelete = () => {
+    removeMealMutation.mutate(meal.id);
+    setDeleteDialogOpen(false);
+  };
+
+  // Combine swipe and long-press handlers
+  const combinedHandlers = {
+    // Touch events (mobile)
+    onTouchStart: (e: React.TouchEvent) => {
+      swipeHandlers.onTouchStart(e);
+      longPressHandlers.onTouchStart(e);
+    },
+    onTouchMove: (e: React.TouchEvent) => {
+      swipeHandlers.onTouchMove(e);
+      longPressHandlers.onTouchMove(e);
+    },
+    onTouchEnd: (e: React.TouchEvent) => {
+      swipeHandlers.onTouchEnd(e);
+      longPressHandlers.onTouchEnd(e);
+    },
+    onTouchCancel: (e: React.TouchEvent) => {
+      swipeHandlers.onTouchCancel(e);
+      longPressHandlers.onTouchCancel(e);
+    },
+    // Mouse events (desktop long-press)
+    onMouseDown: longPressHandlers.onMouseDown,
+    onMouseUp: longPressHandlers.onMouseUp,
+    onMouseLeave: longPressHandlers.onMouseLeave,
+  };
 
   return (
     <>
@@ -112,16 +199,18 @@ export function MealCard({ meal, onClick }: MealCardProps) {
         {/* Main card content */}
         <Card
           className={cn(
-            'cursor-pointer hover:bg-muted/50 transition-all relative',
+            'cursor-pointer hover:bg-muted/50 transition-all relative select-none',
             meal.completed && 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900',
             swipeState.isSwiping && 'transition-none',
           )}
           style={{
             transform: `translateX(${swipeState.offsetX}px)`,
             transition: swipeState.isSwiping ? 'none' : 'transform 0.2s ease-out',
-          }}
+            WebkitTouchCallout: 'none',
+            WebkitUserSelect: 'none',
+          } as React.CSSProperties}
           onClick={onClick}
-          {...handlers}
+          {...combinedHandlers}
         >
           <CardContent className="p-3">
             <div className="flex items-center gap-3">
@@ -197,6 +286,32 @@ export function MealCard({ meal, onClick }: MealCardProps) {
         open={audibleDialogOpen}
         onOpenChange={setAudibleDialogOpen}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Remove Meal
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove{' '}
+              <span className="font-medium text-foreground">{meal.recipeName}</span>{' '}
+              from your meal plan?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
