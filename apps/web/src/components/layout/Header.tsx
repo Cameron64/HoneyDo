@@ -5,6 +5,7 @@ import { useAuth } from '@clerk/clerk-react';
 
 // Check if dev bypass auth is enabled
 const DEV_BYPASS_AUTH = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+const IS_DEV = import.meta.env.DEV;
 
 export function Header() {
   const { isSignedIn } = useAuth();
@@ -17,6 +18,11 @@ export function Header() {
       <div className="container flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <span className="text-xl font-bold text-primary">HoneyDo</span>
+          {IS_DEV && (
+            <span className="rounded bg-blue-500 px-1.5 py-0.5 text-xs font-semibold text-white">
+              DEV
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

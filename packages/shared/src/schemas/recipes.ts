@@ -507,6 +507,13 @@ export const scrapedIngredientSchema = z.object({
   category: z.string(),
 });
 
+export const cookingMethodsSchema = z.object({
+  instant_pot: z.boolean(),
+  slow_cooker: z.boolean(),
+  stovetop: z.boolean(),
+  oven: z.boolean(),
+});
+
 export const scrapedRecipeSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
@@ -519,6 +526,10 @@ export const scrapedRecipeSchema = z.object({
   ingredients: z.array(scrapedIngredientSchema),
   instructions: z.array(z.string()),
   image: z.string().nullable(),
+  // Cooking method detection (for recipes with multiple methods)
+  cookingMethods: cookingMethodsSchema.nullable(),
+  detectedMethods: z.array(z.string()).nullable(),
+  methodWarning: z.string().nullable(),
 });
 
 export const saveScrapedRecipeSchema = z.object({

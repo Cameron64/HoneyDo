@@ -10,11 +10,11 @@ A modular household management platform built as a PWA with AI capabilities.
 - **Self-Hosted** - Run on your own hardware, access via Tailscale
 - **Real-time Sync** - Changes sync across devices instantly via WebSocket
 
-## Planned Modules
+## Modules
 
-- Shopping List (with Google Keep sync)
-- Home Automation (Home Assistant)
-- Recipe Management & Meal Planning
+- **Shopping List** - Collaborative shopping lists with AI categorization
+- **Home Automation** - Home Assistant integration for device control
+- **Recipe Management** - AI-powered meal suggestions and planning
 
 ## Tech Stack
 
@@ -31,134 +31,122 @@ A modular household management platform built as a PWA with AI capabilities.
 | AI | Anthropic Claude SDK |
 | Validation | Zod (shared schemas) |
 
+## Environments
+
+HoneyDo supports separate development and production environments:
+
+| Environment | Web | API | Database |
+|-------------|-----|-----|----------|
+| **Development** | `http://localhost:5173` (local) or `:8080` (Docker) | `http://...:3001` | `docker/data/dev/` |
+| **Production** | `https://...:8443` (HTTPS) | `https://...:3001` (HTTPS) | `docker/data/prod/` |
+
 ## Getting Started
 
-### Option 1: Docker (Recommended)
+### Prerequisites
 
-The easiest way to run HoneyDo is with Docker Compose, which includes everything:
-- HoneyDo API
-- HoneyDo Web (PWA)
-- Home Assistant
-
-**Prerequisites:**
 - Docker and Docker Compose
+- (For local dev) Node.js 20+, pnpm 9+
 
-**Steps:**
+### Quick Start (Development)
 
 1. Clone and configure:
    ```bash
    git clone <repo-url>
    cd honeydo
    cp .env.example .env
+   # Edit .env with your Clerk keys, Anthropic API key, etc.
    ```
 
-2. Edit `.env` with your Clerk keys and other configuration
-
-3. Start everything:
+2. Start the development stack:
    ```bash
-   docker compose up -d
+   pnpm docker:dev
+   # Or: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
    ```
 
-4. Access the services:
-   - **HoneyDo Web**: http://localhost
-   - **HoneyDo API**: http://localhost:3001
+3. Access the services:
+   - **Web**: http://localhost:8080
+   - **API**: http://localhost:3001
    - **Home Assistant**: http://localhost:8123
 
-5. First-time Home Assistant setup:
-   - Go to http://localhost:8123
-   - Complete the onboarding wizard
-   - Create a Long-Lived Access Token (Profile → Long-Lived Access Tokens)
-   - Add the token to your `.env` as `HOME_ASSISTANT_TOKEN`
-   - Restart the stack: `docker compose restart`
+### Production Deployment
 
-### Option 2: Local Development
+Production uses HTTPS with Tailscale certificates for PWA support.
 
-**Prerequisites:**
-
-- Node.js 18+
-- pnpm 9+
-- A Clerk account (for authentication)
-- (Optional) Docker for Home Assistant
-
-### Installation
-
-1. Clone the repository:
+1. Create production secrets:
    ```bash
-   git clone <repo-url>
-   cd honeydo
+   cp docker/secrets/.env.prod.example docker/secrets/.env.prod
+   # Edit with production secrets (Clerk keys, Anthropic API key, etc.)
    ```
 
-2. Install dependencies:
+2. Generate Tailscale certificates (for HTTPS):
    ```bash
-   pnpm install
+   tailscale cert <your-hostname>.ts.net
+   # Move certs to ./certs/ directory
    ```
 
-3. Copy environment files:
+3. Build and deploy:
    ```bash
-   cp .env.example .env
-   cp apps/api/.env.example apps/api/.env
-   cp apps/web/.env.example apps/web/.env
+   # Build with secrets
+   docker compose --env-file docker/secrets/.env.prod \
+     -f docker-compose.yml -f docker-compose.prod.yml build
+
+   # Start production
+   docker compose --env-file docker/secrets/.env.prod \
+     -f docker-compose.yml -f docker-compose.prod.yml up -d
    ```
 
-4. Configure environment variables:
-   - Get your Clerk keys from [clerk.com](https://clerk.com)
-   - Update `.env` files with your values
+4. Access production:
+   - **Web**: https://your-hostname.ts.net:8443
+   - **API**: https://your-hostname.ts.net:3001
 
-5. Create the database directory:
-   ```bash
-   mkdir -p apps/api/data
-   ```
+### Local Development (Without Docker)
 
-6. Push the database schema:
-   ```bash
-   pnpm --filter @honeydo/api db:push
-   ```
+For faster iteration, run API and Web locally with only Home Assistant in Docker:
 
-7. Seed the database (optional):
-   ```bash
-   pnpm --filter @honeydo/api db:seed
-   ```
-
-### Development
-
-Start both frontend and backend:
 ```bash
+# Start Home Assistant
+docker compose -f docker-compose.dev.yml up homeassistant -d
+
+# Install dependencies
+pnpm install
+
+# Start dev servers
 pnpm dev
 ```
 
-Or start individually:
-```bash
-# API (port 3001)
-pnpm --filter @honeydo/api dev
+Access at http://localhost:5173
 
-# Web (port 5173)
-pnpm --filter @honeydo/web dev
+## Docker Commands
+
+| Command | Description |
+|---------|-------------|
+| `pnpm docker:dev` | Start development stack |
+| `pnpm docker:prod` | Start production stack |
+| `docker compose down` | Stop all services |
+| `docker compose logs -f api` | Follow API logs |
+| `docker compose logs -f web` | Follow web logs |
+
+### Rebuilding
+
+```bash
+# Development
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+
+# Production (with secrets for build args)
+docker compose --env-file docker/secrets/.env.prod \
+  -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
 ```
 
-### Available Commands
+## Development Commands
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev` | Start all apps in development mode |
+| `pnpm dev` | Start all apps locally |
 | `pnpm build` | Build all packages |
-| `pnpm lint` | Run ESLint on all packages |
-| `pnpm typecheck` | Run TypeScript type checking |
-| `pnpm format` | Format code with Prettier |
+| `pnpm lint` | Run ESLint |
+| `pnpm typecheck` | TypeScript type checking |
 | `pnpm --filter @honeydo/api db:studio` | Open Drizzle Studio |
 | `pnpm --filter @honeydo/api db:push` | Push schema changes |
-| `pnpm --filter @honeydo/api db:generate` | Generate migrations |
-
-### Docker Commands
-
-| Command | Description |
-|---------|-------------|
-| `docker compose up -d` | Start all services |
-| `docker compose down` | Stop all services |
-| `docker compose logs -f` | Follow logs |
-| `docker compose logs -f api` | Follow API logs only |
-| `docker compose restart` | Restart all services |
-| `docker compose build` | Rebuild images |
-| `docker compose -f docker-compose.dev.yml up -d` | Start Home Assistant only (for local dev) |
 
 ## Project Structure
 
@@ -169,27 +157,54 @@ honeydo/
 │   │   ├── src/
 │   │   │   ├── db/         # Database (Drizzle)
 │   │   │   ├── modules/    # Feature modules
-│   │   │   ├── services/   # Shared services
+│   │   │   ├── services/   # AI, WebSocket, Home Assistant
 │   │   │   └── trpc/       # tRPC setup
-│   │   └── drizzle/        # Migrations
-│   └── web/                 # React frontend
-│       └── src/
-│           ├── components/ # UI components
-│           ├── pages/      # Route pages
-│           ├── services/   # API clients
-│           └── stores/     # Zustand stores
+│   │   └── Dockerfile
+│   └── web/                 # React PWA
+│       ├── src/
+│       │   ├── components/ # UI components
+│       │   ├── modules/    # Feature modules
+│       │   └── services/   # Socket client
+│       ├── Dockerfile
+│       └── nginx-ssl.conf  # Production HTTPS config
 ├── packages/
-│   └── shared/             # Shared types & schemas
-└── docs/                   # Documentation
+│   └── shared/             # Shared types & Zod schemas
+├── docker/
+│   ├── data/               # Persistent data (dev/prod separated)
+│   └── secrets/            # Production secrets (git-ignored)
+├── certs/                  # SSL certificates (git-ignored)
+├── docker-compose.yml      # Base configuration
+├── docker-compose.dev.yml  # Development overrides
+└── docker-compose.prod.yml # Production overrides
 ```
+
+## Environment Files
+
+| File | Purpose | Git |
+|------|---------|-----|
+| `.env` | Root env vars for local dev | Ignored |
+| `.env.development` | Dev defaults template | Tracked |
+| `.env.production` | Prod config template (no secrets) | Tracked |
+| `docker/secrets/.env.prod` | Production secrets | Ignored |
+| `apps/api/.env` | API-specific vars (local dev) | Ignored |
+| `apps/web/.env` | Web-specific vars (local dev) | Ignored |
+
+## Home Assistant Setup
+
+1. Access Home Assistant at http://localhost:8123
+2. Complete the onboarding wizard
+3. Create a Long-Lived Access Token:
+   - Profile (bottom-left) → Long-Lived Access Tokens → Create Token
+4. Add to your `.env` or `docker/secrets/.env.prod`:
+   ```
+   HOME_ASSISTANT_TOKEN=<your-token>
+   ```
+5. Restart the API: `docker compose restart api`
 
 ## Documentation
 
-- [Master Plan](./docs/PLAN.md) - Full project architecture
-- [Epic 1: Foundation](./docs/epics/1-foundation/PLAN.md) - Core platform setup
-- [Epic 2: Shopping List](./docs/epics/2-shopping-list/PLAN.md) - Shopping module
-- [Epic 3: Home Automation](./docs/epics/3-home-automation/PLAN.md) - Home Assistant integration
-- [Epic 4: Recipes](./docs/epics/4-recipes/PLAN.md) - Recipe & meal planning
+- [CLAUDE.md](./CLAUDE.md) - AI assistant instructions
+- [docs/](./docs/) - Feature documentation and plans
 
 ## License
 

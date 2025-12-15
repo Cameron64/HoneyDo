@@ -14,9 +14,10 @@ function getApiUrl(): string {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  // Otherwise, use same hostname as the page but on port 3001
+  // Dev uses port 3002, prod uses port 3001
+  const apiPort = import.meta.env.DEV ? 3002 : 3001;
   const { protocol, hostname } = window.location;
-  return `${protocol}//${hostname}:3001`;
+  return `${protocol}//${hostname}:${apiPort}`;
 }
 
 export function createTRPCClient(

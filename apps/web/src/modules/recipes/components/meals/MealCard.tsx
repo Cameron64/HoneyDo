@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc';
 import { useSwipeGesture } from '@/hooks/use-swipe-gesture';
 import { useLongPress } from '@/hooks/use-long-press';
+import { useSettingsStore } from '@/stores/settings';
 import type { AcceptedMeal } from '@honeydo/shared';
 import { AudibleDialog } from './AudibleDialog';
 
@@ -29,6 +30,7 @@ export function MealCard({ meal, onClick }: MealCardProps) {
   const utils = trpc.useUtils();
   const [audibleDialogOpen, setAudibleDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const enableMealSwap = useSettingsStore((s) => s.featureFlags.enableMealSwap);
 
   const removeMealMutation = trpc.recipes.meals.remove.useMutation({
     onMutate: async () => {
@@ -95,8 +97,10 @@ export function MealCard({ meal, onClick }: MealCardProps) {
   };
 
   const handleSwipeLeft = () => {
-    // Open audible dialog for meal swap
-    setAudibleDialogOpen(true);
+    // Open audible dialog for meal swap (only if feature is enabled)
+    if (enableMealSwap) {
+      setAudibleDialogOpen(true);
+    }
   };
 
   const { handlers: swipeHandlers, swipeState, revealPercent, isThresholdMet } = useSwipeGesture({
@@ -174,26 +178,28 @@ export function MealCard({ meal, onClick }: MealCardProps) {
               </span>
             </div>
           </div>
-          {/* Right side - Audible (swap) indicator (revealed on swipe left) */}
-          <div
-            className={cn(
-              'flex items-center justify-end pr-4 bg-blue-500 ml-auto',
-            )}
-            style={{
-              width: '50%',
-              opacity: swipeState.direction === 'left' ? revealPercent : 0,
-            }}
-          >
+          {/* Right side - Audible (swap) indicator (revealed on swipe left) - only shown if feature enabled */}
+          {enableMealSwap && (
             <div
               className={cn(
-                'flex items-center gap-2 text-white font-medium transition-transform',
-                isThresholdMet && swipeState.direction === 'left' && 'scale-110',
+                'flex items-center justify-end pr-4 bg-blue-500 ml-auto',
               )}
+              style={{
+                width: '50%',
+                opacity: swipeState.direction === 'left' ? revealPercent : 0,
+              }}
             >
-              <span className="text-sm">Swap</span>
-              <RefreshCw className="h-5 w-5" />
+              <div
+                className={cn(
+                  'flex items-center gap-2 text-white font-medium transition-transform',
+                  isThresholdMet && swipeState.direction === 'left' && 'scale-110',
+                )}
+              >
+                <span className="text-sm">Swap</span>
+                <RefreshCw className="h-5 w-5" />
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Main card content */}
@@ -280,12 +286,14 @@ export function MealCard({ meal, onClick }: MealCardProps) {
         </Card>
       </div>
 
-      {/* Audible Dialog */}
-      <AudibleDialog
-        meal={meal}
-        open={audibleDialogOpen}
-        onOpenChange={setAudibleDialogOpen}
-      />
+      {/* Audible Dialog - only rendered if feature enabled */}
+      {enableMealSwap && (
+        <AudibleDialog
+          meal={meal}
+          open={audibleDialogOpen}
+          onOpenChange={setAudibleDialogOpen}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

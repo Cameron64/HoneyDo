@@ -1174,8 +1174,8 @@
       ],
       "seasonality": null,
       "prepTimeMinutes": 20,
-      "cookTimeMinutes": 25,
-      "totalTimeMinutes": 45,
+      "cookTimeMinutes": 270,
+      "totalTimeMinutes": 290,
       "effort": 3,
       "defaultServings": 4,
       "servingsUnit": "servings",
@@ -1648,8 +1648,8 @@
         "winter"
       ],
       "prepTimeMinutes": 20,
-      "cookTimeMinutes": 45,
-      "totalTimeMinutes": 65,
+      "cookTimeMinutes": 480,
+      "totalTimeMinutes": 500,
       "effort": 2,
       "defaultServings": 6,
       "servingsUnit": "servings",
@@ -2685,8 +2685,8 @@
         "quick"
       ],
       "rating": null,
-      "timesMade": 0,
-      "lastMade": null,
+      "timesMade": 1,
+      "lastMade": "2025-12-16",
       "nutrition": {
         "calories": 327,
         "protein": 26,
@@ -3978,8 +3978,8 @@
         "winter"
       ],
       "prepTimeMinutes": 15,
-      "cookTimeMinutes": 25,
-      "totalTimeMinutes": 40,
+      "cookTimeMinutes": 210,
+      "totalTimeMinutes": 225,
       "effort": 2,
       "defaultServings": 6,
       "servingsUnit": "servings",
@@ -4795,8 +4795,8 @@
         "greek"
       ],
       "rating": null,
-      "timesMade": 1,
-      "lastMade": "2025-12-09",
+      "timesMade": 2,
+      "lastMade": "2025-12-14",
       "nutrition": {
         "calories": 320,
         "protein": 35,
@@ -5287,8 +5287,8 @@
         "winter"
       ],
       "prepTimeMinutes": 20,
-      "cookTimeMinutes": 45,
-      "totalTimeMinutes": 65,
+      "cookTimeMinutes": 240,
+      "totalTimeMinutes": 260,
       "effort": 2,
       "defaultServings": 8,
       "servingsUnit": "servings",
@@ -9612,7 +9612,7 @@
     }
   ],
   "metadata": {
-    "lastUpdated": "2025-12-13",
+    "lastUpdated": "2025-12-14",
     "totalRecipes": 64
   }
 }

@@ -2,10 +2,22 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Theme } from '@honeydo/shared';
 
+// Feature flags - centralized toggles for experimental or incomplete features
+interface FeatureFlags {
+  /** Enable meal swap/audible functionality (request AI replacement for meals) */
+  enableMealSwap: boolean;
+}
+
+const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+  enableMealSwap: false,
+};
+
 interface SettingsState {
   theme: Theme;
   resolvedTheme: 'light' | 'dark';
+  featureFlags: FeatureFlags;
   setTheme: (theme: Theme) => void;
+  setFeatureFlag: <K extends keyof FeatureFlags>(flag: K, value: FeatureFlags[K]) => void;
 }
 
 function getSystemTheme(): 'light' | 'dark' {
@@ -29,14 +41,20 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       theme: 'system',
       resolvedTheme: 'light',
+      featureFlags: DEFAULT_FEATURE_FLAGS,
       setTheme: (theme) => {
         set({ theme });
         applyTheme(theme);
       },
+      setFeatureFlag: (flag, value) => {
+        set((state) => ({
+          featureFlags: { ...state.featureFlags, [flag]: value },
+        }));
+      },
     }),
     {
       name: 'honeydo-settings',
-      partialize: (state) => ({ theme: state.theme }),
+      partialize: (state) => ({ theme: state.theme, featureFlags: state.featureFlags }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           applyTheme(state.theme);

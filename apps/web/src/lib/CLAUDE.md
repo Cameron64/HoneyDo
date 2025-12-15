@@ -10,9 +10,11 @@ The `lib/` directory contains foundational utilities used throughout the web app
 
 ```
 apps/web/src/lib/
-├── CLAUDE.md    # This file
-├── trpc.ts      # tRPC client configuration
-└── utils.ts     # General utilities (cn helper)
+├── CLAUDE.md      # This file
+├── trpc.ts        # tRPC client configuration
+├── utils.ts       # General utilities (cn helper)
+├── date-utils.ts  # Centralized date formatting
+└── cache-utils.ts # tRPC cache invalidation helpers
 ```
 
 ## trpc.ts
@@ -127,6 +129,110 @@ import { cn } from '@/lib/utils';
 - `cn('p-2', 'p-4')` returns `'p-4'`, not `'p-2 p-4'`
 - Essential for component prop spreading
 
+## date-utils.ts
+
+Centralized date formatting functions. **Always use these instead of inline formatting.**
+
+### Exports
+
+```typescript
+// Relative labels for meal display: "Today", "Tomorrow", or "Mon, Jan 15"
+export function formatMealDate(dateStr: string): string;
+
+// Section headers: "Today", "Tomorrow", or weekday name
+export function formatDateLabel(dateStr: string): string;
+
+// Short format: "Jan 15"
+export function formatDateShort(dateStr: string): string;
+
+// Full format: "Monday, Jan 15"
+export function formatDateFull(dateStr: string): string;
+
+// Range format: "Jan 15 - Jan 21"
+export function formatDateRange(start: string, end: string): string;
+
+// History format: "Jan 15, 2024"
+export function formatHistoryDate(dateStr: string): string;
+
+// Week label: "Week of Jan 15"
+export function formatWeekLabel(startDateStr: string): string;
+
+// Capitalize meal type: "Dinner"
+export function formatMealTypeLabel(type: string): string;
+
+// Relative time: "today", "yesterday", "3 days ago"
+export function formatRelativeDate(dateStr: string): string;
+```
+
+### Usage
+
+```typescript
+import { formatMealDate, formatDateRange } from '@/lib/date-utils';
+
+// In a component
+<span>{formatMealDate(meal.date)}</span>  // "Today" or "Mon, Jan 15"
+<p>{formatDateRange(batch.start, batch.end)}</p>  // "Jan 15 - Jan 21"
+```
+
+### Important Notes
+
+- All functions expect date strings in `YYYY-MM-DD` format
+- Functions handle timezone issues by appending `T00:00:00` internally
+- `formatRelativeDate` accepts full ISO datetime strings (with time component)
+
+## cache-utils.ts
+
+Centralized tRPC cache invalidation helpers. **Use these instead of manually calling multiple invalidate() calls.**
+
+### Exports
+
+```typescript
+// Hook that provides cache invalidation helpers
+export function useCacheInvalidation(): CacheInvalidationHelpers;
+
+interface CacheInvalidationHelpers {
+  invalidateMeals: () => void;           // All meal queries
+  invalidateMealsByDate: (date: string) => void;  // Meal queries for specific date
+  invalidateSuggestions: () => void;     // Suggestion queries
+  invalidateSuggestionsById: (id: string) => void;
+  invalidateWizard: () => void;          // All wizard queries
+  invalidateWizardSession: () => void;   // Just session queries
+  invalidateShopping: () => void;        // Shopping-related queries
+  invalidateBatchHistory: () => void;    // Batch history queries
+  invalidateRecipeLibrary: () => void;   // Recipe library queries
+  invalidateAllRecipes: () => void;      // All recipes module queries
+}
+```
+
+### Usage
+
+```typescript
+import { useCacheInvalidation } from '@/lib/cache-utils';
+
+function MyComponent() {
+  const { invalidateMeals, invalidateShopping } = useCacheInvalidation();
+
+  const removeMeal = trpc.recipes.meals.remove.useMutation({
+    onSuccess: () => {
+      invalidateMeals();  // Instead of 5+ individual invalidate() calls
+    },
+  });
+}
+```
+
+### When to Use Each Method
+
+| Method | Use After |
+|--------|-----------|
+| `invalidateMeals` | Adding, removing, completing meals |
+| `invalidateMealsByDate` | Modifying a meal on a specific date |
+| `invalidateSuggestions` | Requesting, accepting, rejecting suggestions |
+| `invalidateWizard` | Wizard step completion, abandonment, finish |
+| `invalidateShopping` | Generating shopping lists from meals |
+| `invalidateBatchHistory` | Deleting or modifying batches |
+| `invalidateRecipeLibrary` | Adding, removing, modifying recipes |
+| `invalidateAllRecipes` | Major state changes (use sparingly) |
+
 ## Import Alias
 
 The `@/` alias points to `src/`:
@@ -134,6 +240,8 @@ The `@/` alias points to `src/`:
 ```typescript
 import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
+import { formatMealDate } from '@/lib/date-utils';
+import { useCacheInvalidation } from '@/lib/cache-utils';
 ```
 
 Configured in `vite.config.ts` and `tsconfig.json`.

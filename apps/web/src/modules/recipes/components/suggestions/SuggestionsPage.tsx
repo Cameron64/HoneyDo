@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { trpc } from '@/lib/trpc';
+import { formatDateRange } from '@/lib/date-utils';
 import { useRecipesSync } from '../../hooks/use-recipes-sync';
 import { MealSuggestionCard } from './MealSuggestionCard';
 import { RequestSuggestionsDialog } from './RequestSuggestionsDialog';
@@ -291,12 +292,3 @@ function SuggestionsSummary({
   );
 }
 
-function formatDateRange(start: string, end: string): string {
-  const startDate = new Date(start + 'T00:00:00');
-  const endDate = new Date(end + 'T00:00:00');
-
-  const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-  return `${startStr} - ${endStr}`;
-}

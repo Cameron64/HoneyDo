@@ -278,6 +278,7 @@ Please suggest ONE replacement meal for ${meal.mealType} on ${meal.date} only.`;
       const mealId = meal.id;
       const mealDate = meal.date;
       const mealType = meal.mealType;
+      const mealBatchId = meal.batchId;
 
       // Use persistent session for better performance (no cold start)
       // Fall back to legacy CLI spawn if USE_LEGACY_CLAUDE_CLI is set
@@ -314,6 +315,7 @@ Please suggest ONE replacement meal for ${meal.mealType} on ${meal.date} only.`;
               recipeName: replacement.recipe.name,
               recipeData: replacement.recipe,
               servings: meal.servings,
+              batchId: mealBatchId,
             })
             .returning();
           console.log('[Audible] New meal created:', newMeal.id);

@@ -211,18 +211,29 @@ function extractSource(url: string): string {
 // Scraper Interface
 // ============================================
 
+interface CookingMethods {
+  instant_pot: boolean;
+  slow_cooker: boolean;
+  stovetop: boolean;
+  oven: boolean;
+}
+
 interface PythonScrapeResult {
   success: boolean;
   error?: string;
   title?: string;
   ingredients?: string[];
   instructions?: string[];
-  prepTime?: string;
-  cookTime?: string;
-  totalTime?: string;
+  prepTime?: string | number;
+  cookTime?: string | number;
+  totalTime?: string | number;
   servings?: string | number;
   image?: string;
   description?: string;
+  // New fields for cooking method detection
+  cookingMethods?: CookingMethods;
+  detectedMethod?: string[];
+  methodWarning?: string;
 }
 
 interface ParsedIngredient {
@@ -287,6 +298,10 @@ export class RecipeScraperService {
       ingredients,
       instructions: (result.instructions || []).filter(Boolean),
       image: result.image || null,
+      // Cooking method detection
+      cookingMethods: result.cookingMethods || null,
+      detectedMethods: result.detectedMethod || null,
+      methodWarning: result.methodWarning || null,
     };
   }
 

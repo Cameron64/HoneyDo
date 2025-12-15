@@ -2,6 +2,7 @@ import { Check, RotateCcw, Trash2, Clock, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { formatMealDate } from '@/lib/date-utils';
 import type { MealDisposition, MealType, RecipeData } from '@honeydo/shared';
 
 // Minimal meal shape for wizard batch management
@@ -135,13 +136,4 @@ export function MealDispositionCard({
       </CardContent>
     </Card>
   );
-}
-
-function formatMealDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
 }

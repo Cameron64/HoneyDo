@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { trpc } from '@/lib/trpc';
+import { formatDateLabel, formatDateShort, formatDateRange } from '@/lib/date-utils';
 import { useRecipesSync } from '../../hooks/use-recipes-sync';
 import { MealCard } from './MealCard';
 import { MealDetailSheet } from './MealDetailSheet';
@@ -122,7 +123,7 @@ export function MealPlanPage() {
               <div>
                 <h1 className="text-xl font-semibold">Meal Plan</h1>
                 <p className="text-sm text-muted-foreground">
-                  {formatDateRangeDisplay(dateRange.start, dateRange.end)}
+                  {formatDateRange(dateRange.start, dateRange.end)}
                 </p>
               </div>
             </div>
@@ -232,7 +233,7 @@ function DaySection({ date, meals, onMealClick }: DaySectionProps) {
           {dateLabel}
         </h3>
         <span className="text-sm text-muted-foreground">
-          {formatDateFull(date)}
+          {formatDateShort(date)}
         </span>
       </div>
       {isEmpty ? (
@@ -254,41 +255,3 @@ function DaySection({ date, meals, onMealClick }: DaySectionProps) {
   );
 }
 
-function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  if (date.getTime() === today.getTime()) {
-    return 'Today';
-  }
-  if (date.getTime() === tomorrow.getTime()) {
-    return 'Tomorrow';
-  }
-
-  return date.toLocaleDateString('en-US', { weekday: 'long' });
-}
-
-function formatDateFull(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function formatDateRangeDisplay(start: string, end: string): string {
-  const startDate = new Date(start + 'T00:00:00');
-  const endDate = new Date(end + 'T00:00:00');
-
-  const startStr = startDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-  const endStr = endDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-
-  return `${startStr} - ${endStr}`;
-}

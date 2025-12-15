@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RefreshCw, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { formatMealDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -117,7 +118,7 @@ export function AudibleDialog({ meal, open, onOpenChange }: AudibleDialogProps) 
             Swap Meal
           </DialogTitle>
           <DialogDescription>
-            Request a replacement for <span className="font-medium">{meal.recipeName}</span> on {formatDate(meal.date)}
+            Request a replacement for <span className="font-medium">{meal.recipeName}</span> on {formatMealDate(meal.date)}
           </DialogDescription>
         </DialogHeader>
 
@@ -203,11 +204,3 @@ export function AudibleDialog({ meal, open, onOpenChange }: AudibleDialogProps) 
   );
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}

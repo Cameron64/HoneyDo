@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { trpc } from '@/lib/trpc';
+import { formatMealDate } from '@/lib/date-utils';
+import { useSettingsStore } from '@/stores/settings';
 import { useRecipesSync } from '../hooks/use-recipes-sync';
 import { MealDetailSheet } from './meals/MealDetailSheet';
 import { AudibleDialog } from './meals/AudibleDialog';
@@ -15,6 +17,9 @@ import type { AcceptedMeal } from '@honeydo/shared';
 export function RecipesPage() {
   // Set up real-time sync
   useRecipesSync();
+
+  // Feature flags
+  const enableMealSwap = useSettingsStore((s) => s.featureFlags.enableMealSwap);
 
   // State for meal detail sheet and audible dialog
   const [selectedMeal, setSelectedMeal] = useState<AcceptedMeal | null>(null);
@@ -238,19 +243,21 @@ export function RecipesPage() {
                           Pending shop
                         </Badge>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAudibleMeal(meal);
-                          setAudibleDialogOpen(true);
-                        }}
-                        title="Swap meal"
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
+                      {enableMealSwap && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAudibleMeal(meal);
+                            setAudibleDialogOpen(true);
+                          }}
+                          title="Swap meal"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -274,12 +281,14 @@ export function RecipesPage() {
         onOpenChange={setDetailSheetOpen}
       />
 
-      {/* Audible Dialog for swapping meals */}
-      <AudibleDialog
-        meal={audibleMeal}
-        open={audibleDialogOpen}
-        onOpenChange={setAudibleDialogOpen}
-      />
+      {/* Audible Dialog for swapping meals - only rendered if feature enabled */}
+      {enableMealSwap && (
+        <AudibleDialog
+          meal={audibleMeal}
+          open={audibleDialogOpen}
+          onOpenChange={setAudibleDialogOpen}
+        />
+      )}
 
       {/* Recipe Import Sheet */}
       <RecipeImportSheet
@@ -290,20 +299,3 @@ export function RecipesPage() {
   );
 }
 
-function formatMealDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  if (date.getTime() === today.getTime()) {
-    return 'Today';
-  }
-  if (date.getTime() === tomorrow.getTime()) {
-    return 'Tomorrow';
-  }
-
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}

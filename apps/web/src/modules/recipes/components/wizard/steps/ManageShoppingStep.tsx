@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
+import { formatWeekLabel } from '@/lib/date-utils';
 import { IngredientRow } from '../../shopping/IngredientRow';
 import type { AggregatedIngredient } from '@honeydo/shared';
 import { Button } from '@/components/ui/button';
@@ -83,9 +84,8 @@ export function ManageShoppingStep({ onStepComplete }: ManageShoppingStepProps) 
     const today = new Date();
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week
-    setNewListName(
-      `Week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-    );
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    setNewListName(formatWeekLabel(weekStartStr));
   }, []);
 
   // Auto-select first list for replace/append

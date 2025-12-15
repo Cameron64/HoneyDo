@@ -9,6 +9,12 @@ const certPath = path.resolve(__dirname, '../../certs/cams-work-comp.taila29c19.
 const keyPath = path.resolve(__dirname, '../../certs/cams-work-comp.taila29c19.ts.net.key');
 const hasCerts = fs.existsSync(certPath) && fs.existsSync(keyPath);
 
+const isDev = process.env.NODE_ENV !== 'production';
+const appName = isDev ? 'HoneyDo Dev' : 'HoneyDo';
+const shortName = isDev ? 'HoneyDo Dev' : 'HoneyDo';
+const themeColor = isDev ? '#3b82f6' : '#f59e0b'; // Blue for dev, amber for prod
+const iconPrefix = isDev ? 'icon-dev' : 'icon'; // Blue icons for dev
+
 export default defineConfig({
   plugins: [
     react(),
@@ -16,10 +22,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'HoneyDo',
-        short_name: 'HoneyDo',
+        id: isDev ? '/honeydo-dev/' : '/honeydo/',
+        name: appName,
+        short_name: shortName,
         description: 'Household management for couples',
-        theme_color: '#f59e0b',
+        theme_color: themeColor,
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait-primary',
@@ -27,17 +34,17 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/icons/icon-192x192.png',
+            src: `/icons/${iconPrefix}-192x192.png`,
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/icons/icon-512x512.png',
+            src: `/icons/${iconPrefix}-512x512.png`,
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: '/icons/icon-512x512.png',
+            src: `/icons/${iconPrefix}-512x512.png`,
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
@@ -118,7 +125,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0', // Bind to all interfaces for LAN access
-    port: 5173,
+    port: 8443,
     https: hasCerts
       ? {
           cert: fs.readFileSync(certPath),

@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { trpc } from '@/lib/trpc';
+import { formatDateRange, formatMealDate, formatRelativeDate } from '@/lib/date-utils';
 import { useRecipesSync } from '../../hooks/use-recipes-sync';
 
 export function BatchHistoryPage() {
@@ -318,7 +319,7 @@ function BatchCard({ batch, selected, onToggleSelect, onDelete }: BatchCardProps
                 {batch.archivedAt && (
                   <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    Archived {formatRelativeDate(batch.archivedAt)}
+                    Archived {formatRelativeDate(batch.archivedAt as string)}
                   </p>
                 )}
               </div>
@@ -353,7 +354,7 @@ function BatchCard({ batch, selected, onToggleSelect, onDelete }: BatchCardProps
               {sortedDates.map((date) => (
                 <div key={date}>
                   <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                    {formatDateLabel(date)}
+                    {formatMealDate(date)}
                   </h4>
                   <div className="space-y-2">
                     {mealsByDate[date].map((meal) => (
@@ -407,43 +408,4 @@ function MealRow({ meal }: MealRowProps) {
       </div>
     </div>
   );
-}
-
-function formatDateRange(start: string, end: string): string {
-  const startDate = new Date(start + 'T00:00:00');
-  const endDate = new Date(end + 'T00:00:00');
-
-  const startStr = startDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-  const endStr = endDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-
-  return `${startStr} - ${endStr}`;
-}
-
-function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function formatRelativeDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return 'today';
-  if (diffDays === 1) return 'yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-  return `${Math.floor(diffDays / 365)} years ago`;
 }

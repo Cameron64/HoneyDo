@@ -13,8 +13,10 @@ function getApiUrl(): string {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
+  // Dev uses port 3002, prod uses port 3001
+  const apiPort = import.meta.env.DEV ? 3002 : 3001;
   const { protocol, hostname } = window.location;
-  return `${protocol}//${hostname}:3001`;
+  return `${protocol}//${hostname}:${apiPort}`;
 }
 
 export async function connectSocket(getToken: () => Promise<string | null>) {

@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { trpc } from '@/lib/trpc';
+import { formatHistoryDate } from '@/lib/date-utils';
 import { RecipeDetailSheet } from '../common/RecipeDetailSheet';
 
 interface RecipeToDelete {
@@ -259,7 +260,7 @@ export function RecipeLibraryPage() {
 
                       {recipe.lastMade && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Last made: {formatDate(recipe.lastMade)}
+                          Last made: {formatHistoryDate(recipe.lastMade)}
                         </p>
                       )}
                     </div>
@@ -312,13 +313,4 @@ export function RecipeLibraryPage() {
       />
     </div>
   );
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
 }

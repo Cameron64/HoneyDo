@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { trpc } from '@/lib/trpc';
+import { formatDateLabel, formatDateShort, formatMealTypeLabel } from '@/lib/date-utils';
 import { useRecipesSync } from '../../hooks/use-recipes-sync';
 import { MealCard } from './MealCard';
 import { MealDetailSheet } from './MealDetailSheet';
@@ -225,7 +226,7 @@ interface GroupSectionProps {
 
 function GroupSection({ groupKey, meals, viewMode, onMealClick }: GroupSectionProps) {
   const label = viewMode === 'date' ? formatDateLabel(groupKey) : formatMealTypeLabel(groupKey);
-  const sublabel = viewMode === 'date' ? formatDateFull(groupKey) : `${meals.length} meal${meals.length !== 1 ? 's' : ''}`;
+  const sublabel = viewMode === 'date' ? formatDateShort(groupKey) : `${meals.length} meal${meals.length !== 1 ? 's' : ''}`;
   const isToday = viewMode === 'date' && label === 'Today';
 
   return (
@@ -279,31 +280,4 @@ function NoResultsState({ filterMode, onReset }: NoResultsStateProps) {
       </Button>
     </div>
   );
-}
-
-function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  if (date.getTime() === today.getTime()) {
-    return 'Today';
-  }
-  if (date.getTime() === tomorrow.getTime()) {
-    return 'Tomorrow';
-  }
-
-  return date.toLocaleDateString('en-US', { weekday: 'long' });
-}
-
-function formatDateFull(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function formatMealTypeLabel(type: string): string {
-  return type.charAt(0).toUpperCase() + type.slice(1);
 }

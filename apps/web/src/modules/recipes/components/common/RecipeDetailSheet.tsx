@@ -2,10 +2,12 @@
  * Recipe Detail Sheet
  *
  * Shows full recipe details including nutrition, ingredients, and instructions.
- * Used in library browsing and wizard recipe selection.
+ * Used in library browsing, wizard recipe selection, and meal detail views.
+ * This is the canonical recipe view used throughout the app.
  */
 
 import { Clock, Users, ChefHat, ExternalLink, Flame, UtensilsCrossed } from 'lucide-react';
+import { formatDateFull } from '@/lib/date-utils';
 import { Badge } from '@/components/ui/badge';
 import {
   Sheet,
@@ -32,6 +34,7 @@ interface RecipeIngredient {
   amount: number | null;
   unit: string | null;
   category: string;
+  preparation?: string | null;
 }
 
 interface Recipe {
@@ -55,12 +58,22 @@ interface Recipe {
   lastMade?: string | null;
 }
 
+/** Optional meal context when viewing a recipe as part of a meal plan */
+interface MealContext {
+  date: string;
+  mealType: string;
+  servings: number;
+  shoppingListGenerated?: boolean;
+}
+
 interface RecipeDetailSheetProps {
   recipe: Recipe | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Optional footer content (e.g., action buttons) */
   footer?: React.ReactNode;
+  /** Optional meal context when viewing from meal plan */
+  mealContext?: MealContext;
 }
 
 const EFFORT_LABELS = ['Minimal', 'Easy', 'Moderate', 'Involved', 'Complex'];
@@ -70,15 +83,30 @@ export function RecipeDetailSheet({
   open,
   onOpenChange,
   footer,
+  mealContext,
 }: RecipeDetailSheetProps) {
   if (!recipe) return null;
+
+  // Use meal servings if provided, otherwise default
+  const servings = mealContext?.servings ?? recipe.defaultServings;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg flex flex-col p-0">
         <SheetHeader className="px-6 pt-6 pb-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary">{recipe.cuisine}</Badge>
+            {mealContext && (
+              <>
+                <Badge variant="secondary" className="capitalize">
+                  {mealContext.mealType}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {formatDateFull(mealContext.date)}
+                </span>
+                <span className="text-muted-foreground">•</span>
+              </>
+            )}
+            <Badge variant="outline">{recipe.cuisine}</Badge>
             {recipe.tags?.slice(0, 2).map((tag) => (
               <Badge key={tag} variant="outline" className="text-xs">
                 {tag}
@@ -102,7 +130,7 @@ export function RecipeDetailSheet({
               </div>
               <div className="text-center p-3 rounded-lg bg-muted">
                 <Users className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-                <p className="text-sm font-medium">{recipe.defaultServings}</p>
+                <p className="text-sm font-medium">{servings}</p>
                 <p className="text-xs text-muted-foreground">Servings</p>
               </div>
               <div className="text-center p-3 rounded-lg bg-muted">
@@ -193,6 +221,9 @@ export function RecipeDetailSheet({
                       {(ing.amount ?? 0) > 0 && `${ing.amount} ${ing.unit ?? ''}`}
                     </span>
                     <span>{ing.name}</span>
+                    {ing.preparation && (
+                      <span className="text-xs">({ing.preparation})</span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -257,6 +288,20 @@ export function RecipeDetailSheet({
                     </Badge>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Shopping Status (only shown in meal context) */}
+            {mealContext && mealContext.shoppingListGenerated !== undefined && (
+              <div className="p-3 rounded-lg bg-muted">
+                <p className="text-sm">
+                  <span className="font-medium">Shopping: </span>
+                  {mealContext.shoppingListGenerated ? (
+                    <span className="text-green-600">Added to list</span>
+                  ) : (
+                    <span className="text-orange-600">Pending</span>
+                  )}
+                </p>
               </div>
             )}
           </div>
